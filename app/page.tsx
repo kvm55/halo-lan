@@ -639,7 +639,8 @@ function MainApp({ screen, setScreen, setNeedsProfile, session, players, draft, 
 
           <nav className="flex gap-1 mt-4 overflow-x-auto">
             {(["lobby", "equipment", "draft", "voting", "games"] as const).map(tab => {
-              const wip = tab === "draft" || tab === "voting" || tab === "games";
+              const wip = tab === "draft" || tab === "games";
+              const tabLabels: Record<string, string> = { lobby: "LOBBY", equipment: "EQUIPMENT", draft: "DRAFT", voting: "MAPS", games: "GAMES" };
               return (
               <button
                 key={tab}
@@ -652,7 +653,7 @@ function MainApp({ screen, setScreen, setNeedsProfile, session, players, draft, 
                     : "border-green-900/30 text-green-700 hover:border-green-600 hover:text-green-400"
                 }`}
               >
-                {tab}{wip ? " *" : ""}
+                {tabLabels[tab] || tab}{wip ? " *" : ""}
               </button>
               );
             })}
@@ -765,20 +766,9 @@ function MainApp({ screen, setScreen, setNeedsProfile, session, players, draft, 
           </div>
         )}
 
-        {/* ---- MAP VOTING (WIP) ---- */}
+        {/* ---- MAP VOTING ---- */}
         {screen === "voting" && (
-          <WIPScreen
-            title="MAP VOTING"
-            features={[
-              "A/B tournament-style map matchups",
-              "Swipe right to play, left to skip",
-              "Map images + descriptions for every arena",
-              "Game mode voting (Slayer, CTF, SWAT, Infection, Fiesta...)",
-              "ELO rankings that improve with more votes",
-              "Final playlist auto-generated from top-voted maps",
-            ]}
-            eta="BEFORE GAME NIGHT"
-          />
+          <MapVotingSwipe maps={maps} voting={voting} playerId={session.playerId} />
         )}
 
         {/* ---- GAMES (WIP) ---- */}
@@ -1600,8 +1590,7 @@ function PlayerCard({ player: p, ranksRevealed }: { player: Player; ranksReveale
   );
 }
 
-// MapVotingSwipe kept for reference but not used - replaced by WIP screen
-function _MapVotingSwipeOld({ maps, voting, playerId }: { maps: HaloMap[]; voting: ReturnType<typeof useMapVoting>; playerId: string | null }) {
+function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: ReturnType<typeof useMapVoting>; playerId: string | null }) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [mode, setMode] = useState<"swipe" | "results">("swipe");
   const [gameFilter, setGameFilter] = useState("all");
