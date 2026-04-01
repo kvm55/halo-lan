@@ -1861,18 +1861,68 @@ function EquipmentManifest({ players }: { players: Player[] }) {
       </div>
 
       {allItems.length > 0 ? (
-        <div className="space-y-1">
-          {allItems.map(item => (
-            <div key={item.id} className="flex items-center justify-between py-1.5 px-2 border-b border-green-900/20">
-              <div className="flex items-center gap-2">
-                <span className={`text-sm ${typeColors[item.item_type]}`}>{item.model}</span>
-                {item.notes && <span className="text-green-800 text-xs">({item.notes})</span>}
-              </div>
-              <span className="text-green-700 text-xs">
-                {item.player?.profile_confirmed ? shortName(item.player) : (item.player?.tentative_name || "?")}
-              </span>
-            </div>
-          ))}
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-green-900/50 text-green-600 text-xs">
+                <th className="text-left py-2 pr-2">SPARTAN</th>
+                <th className="text-center py-2 px-1">XBOX</th>
+                <th className="text-center py-2 px-1">CTRL</th>
+                <th className="text-center py-2 px-1">TV</th>
+                <th className="text-center py-2 px-1">OTHER</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(() => {
+                // Group by player
+                const byPlayer: Record<string, { name: string; xbox: string[]; ctrl: string[]; tv: string[]; other: string[] }> = {};
+                allItems.forEach(item => {
+                  const pid = item.player_id;
+                  const pname = item.player?.profile_confirmed ? shortName(item.player) : (item.player?.tentative_name || "?");
+                  if (!byPlayer[pid]) byPlayer[pid] = { name: pname, xbox: [], ctrl: [], tv: [], other: [] };
+                  const entry = item.model + (item.notes ? ` (${item.notes})` : "");
+                  if (item.item_type === "xbox") byPlayer[pid].xbox.push(entry);
+                  else if (item.item_type === "controller") byPlayer[pid].ctrl.push(entry);
+                  else if (item.item_type === "tv") byPlayer[pid].tv.push(entry);
+                  else byPlayer[pid].other.push(entry);
+                });
+                return Object.entries(byPlayer).map(([pid, data]) => (
+                  <tr key={pid} className="player-row border-b border-green-900/20">
+                    <td className="py-2 pr-2 text-green-300 font-bold text-xs">{data.name}</td>
+                    <td className="py-2 px-1 text-center">
+                      {data.xbox.length > 0 ? (
+                        <div className="text-green-400 text-xs">{data.xbox.length}<span className="text-green-800 block text-[9px]">{data.xbox[0]}</span></div>
+                      ) : <span className="text-green-900">-</span>}
+                    </td>
+                    <td className="py-2 px-1 text-center">
+                      {data.ctrl.length > 0 ? (
+                        <span className="text-blue-400 text-xs">{data.ctrl.length}</span>
+                      ) : <span className="text-green-900">-</span>}
+                    </td>
+                    <td className="py-2 px-1 text-center">
+                      {data.tv.length > 0 ? (
+                        <div className="text-amber-400 text-xs">{data.tv.length}<span className="text-green-800 block text-[9px]">{data.tv[0]}</span></div>
+                      ) : <span className="text-green-900">-</span>}
+                    </td>
+                    <td className="py-2 px-1 text-center">
+                      {data.other.length > 0 ? (
+                        <div className="text-purple-400 text-xs">{data.other.map((o, i) => <span key={i} className="block text-[9px]">{o}</span>)}</div>
+                      ) : <span className="text-green-900">-</span>}
+                    </td>
+                  </tr>
+                ));
+              })()}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-green-500/30 text-green-300 font-bold text-xs">
+                <td className="py-2">TOTAL</td>
+                <td className="py-2 text-center text-green-400">{xboxes.length}</td>
+                <td className="py-2 text-center text-blue-400">{controllers.length}</td>
+                <td className="py-2 text-center text-amber-400">{tvs.length}</td>
+                <td className="py-2 text-center text-purple-400">{others.length}</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       ) : (
         <p className="text-green-800 text-sm text-center py-4">No equipment logged yet. Add yours above.</p>
@@ -1884,15 +1934,14 @@ function EquipmentManifest({ players }: { players: Player[] }) {
 function WIPScreen({ title, features, eta }: { title: string; features: string[]; eta: string }) {
   return (
     <div className="space-y-6">
-      <div className="kpi-card p-6 rounded text-center border-amber-500/20 relative overflow-hidden">
-        <img src="/bg/grunt_wip.jpg" alt="Grunt with plasma grenades" className="absolute inset-0 w-full h-full object-cover opacity-20" />
-        <div className="relative z-10">
-          <h2 className="text-2xl font-bold text-amber-400 hud-glow-amber mb-2">{title}</h2>
-          <p className="text-amber-500/60 text-sm tracking-widest">UNDER CONSTRUCTION</p>
-          <div className="w-16 h-0.5 bg-amber-500/30 mx-auto my-3" />
-          <p className="text-red-400 text-xs font-bold">DANGER ZONE</p>
-          <p className="text-green-600 text-xs mt-1">ETA: {eta}</p>
-        </div>
+      <div className="kpi-card p-6 rounded text-center border-amber-500/20">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/bg/grunt_wip.jpg" alt="Grunt with plasma grenades" className="w-40 h-auto mx-auto mb-4 rounded opacity-80" />
+        <h2 className="text-2xl font-bold text-amber-400 hud-glow-amber mb-2">{title}</h2>
+        <p className="text-amber-500/60 text-sm tracking-widest">UNDER CONSTRUCTION</p>
+        <div className="w-16 h-0.5 bg-amber-500/30 mx-auto my-3" />
+        <p className="text-red-400 text-xs font-bold">DANGER ZONE</p>
+        <p className="text-green-600 text-xs mt-1">ETA: {eta}</p>
       </div>
 
       <div className="kpi-card p-4 rounded">
