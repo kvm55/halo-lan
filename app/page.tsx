@@ -1931,8 +1931,8 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
         </div>
       </div>
 
-      {/* Size category filter */}
-      <div className="flex gap-1 overflow-x-auto pb-1">
+      {/* Size category filter - hide on veto/results */}
+      {(mode === "vote") && <div className="flex gap-1 overflow-x-auto pb-1">
         {[
           { id: "all", label: "ALL MAPS" },
           { id: "small", label: "2v2 / 4v4" },
@@ -1944,10 +1944,10 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
             {s.label}
           </button>
         ))}
-      </div>
+      </div>}
 
-      {/* Game + game type filters */}
-      <div className="flex gap-1 overflow-x-auto pb-1">
+      {/* Game + game type filters - hide on veto/results */}
+      {(mode === "vote" || mode === "gametypes") && <div className="flex gap-1 overflow-x-auto pb-1">
         <button onClick={() => { setGameFilter("all"); setMatchup(null); setMatchupCount(0); }}
           className={`px-2 py-1 border text-[10px] whitespace-nowrap ${gameFilter === "all" ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
           ALL GAMES
@@ -1958,8 +1958,8 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
             {g.replace("Halo ", "H").toUpperCase()}
           </button>
         ))}
-      </div>
-      {mode !== "vote" && <div className="flex gap-1 overflow-x-auto pb-1">
+      </div>}
+      {mode === "gametypes" && <div className="flex gap-1 overflow-x-auto pb-1">
         <button onClick={() => { setSelectedModes(new Set()); setMatchup(null); setMatchupCount(0); }}
           className={`px-2 py-1.5 border-2 text-[10px] whitespace-nowrap rounded font-bold ${allModesSelected ? "border-amber-400 text-amber-300 bg-amber-400/15" : "border-green-900/20 text-green-800"}`}>
           ALL TYPES
@@ -1984,7 +1984,7 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
       </div>}
 
       {/* Active filter summary */}
-      {mode !== "vote" && !allModesSelected && selectedModes.size > 0 && (
+      {mode === "gametypes" && !allModesSelected && selectedModes.size > 0 && (
         <div className="kpi-card p-2 rounded border-amber-500/20 text-center">
           <span className="text-amber-400 text-xs font-bold tracking-wider">
             FILTERING: {[...selectedModes].map(m => m.toUpperCase()).join(" + ")}
