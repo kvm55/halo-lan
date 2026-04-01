@@ -1886,7 +1886,19 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
             )}
           </div>
           {map.best_gametypes && map.best_gametypes.length > 0 && (
-            <p className="text-green-700 text-[10px] mt-1">Best for: {map.best_gametypes.join(", ")}</p>
+            <p className="text-[10px] mt-1">
+              <span className="text-green-700">Best for: </span>
+              {map.best_gametypes.map((gt, i) => {
+                const gtColors: Record<string, string> = {
+                  Slayer: "text-green-400", CTF: "text-blue-400", SWAT: "text-red-400",
+                  Infection: "text-purple-400", "Shotty Snipers": "text-cyan-400", Fiesta: "text-yellow-400",
+                  Oddball: "text-pink-400", "King of the Hill": "text-orange-400", Rockets: "text-red-300",
+                  Swords: "text-violet-400", Snipers: "text-sky-400", "Big Team": "text-emerald-400",
+                  Custom: "text-gray-400", "Team BRs": "text-teal-400", Assault: "text-amber-400",
+                };
+                return <span key={gt}><span className={gtColors[gt] || "text-green-500"}>{gt}</span>{i < map.best_gametypes!.length - 1 ? <span className="text-green-800">, </span> : null}</span>;
+              })}
+            </p>
           )}
           {label && <p className="text-center text-green-500 text-xs mt-2 font-bold tracking-widest">{label}</p>}
         </div>
