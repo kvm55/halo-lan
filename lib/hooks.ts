@@ -422,3 +422,89 @@ export function useSettings() {
 
   return { settings, updateSetting, ranksRevealed: settings.ranks_revealed === "true" };
 }
+
+// ---- COMPOSITE SCORES ----
+
+export interface CompositeScore {
+  playerId: string;
+  score: number;
+  breakdown: {
+    h2Rank: number;
+    experienceAvg: number;
+    peerConsensus: number;
+    skillVoteNet: number;
+    recencyBonus: number;
+  };
+  peerRatingCount: number;
+}
+
+export function useCompositeScores(players: Player[]) {
+  const [scores, setScores] = useState<Record<string, CompositeScore>>({});
+
+  useEffect(() => {
+    if (players.length === 0) return;
+
+    const compute = async () => {
+      // Fetch peer assessments
+      const { data: assessments } = await supabase.from("halo_peer_assessments").select("*");
+      // Fetch skill votes
+      const { data: skillVotes } = await supabase.from("halo_skill_votes").select("*");
+
+      const expToNum = (exp: string) => {
+        if (exp === "sweaty") return 100;
+        if (exp === "experienced") return 50;
+        if (exp === "casual") return 25;
+        return 0;
+      };
+
+      const result: Record<string, CompositeScore> = {};
+
+      for (const p of players) {
+        // Self-reported H2 rank (0-50 normalized to 0-100)
+        const h2Rank = Math.min(100, (p.h2_rank || 0) * 2);
+
+        // Average experience across games
+        const exps: number[] = [p.h1_experience, p.h2_experience, p.h3_experience, p.h5_experience, p.hinf_experience]
+          .filter(e => e && e !== "never")
+          .map(e => expToNum(e));
+        const experienceAvg = exps.length > 0 ? exps.reduce((a: number, b: number) => a + b, 0) / exps.length : 0;
+
+        // Peer assessment consensus
+        const peerForPlayer = (assessments || []).filter((a: { target_id: string }) => a.target_id === p.id);
+        const peerExps = peerForPlayer
+          .map((a: { experience: string }) => expToNum(a.experience))
+          .filter((v: number) => v > 0);
+        const peerConsensus = peerExps.length > 0 ? peerExps.reduce((a: number, b: number) => a + b, 0) / peerExps.length : 0;
+
+        // Skill vote net
+        const votesForPlayer = (skillVotes || []).filter((v: { target_id: string }) => v.target_id === p.id);
+        const skillVoteNet = votesForPlayer.reduce((s: number, v: { vote: number }) => s + v.vote, 0);
+
+        // Recency bonus
+        const recencyBonus = p.last_played_year === 2026 ? 10 : p.last_played_year === 2025 ? 5 : 0;
+
+        // Weighted composite (out of ~100)
+        const score = Math.round(
+          h2Rank * 0.25 +
+          experienceAvg * 0.3 +
+          peerConsensus * 0.25 +
+          Math.min(20, Math.max(-20, skillVoteNet * 5)) * 0.1 +
+          recencyBonus
+        );
+
+        result[p.id] = {
+          playerId: p.id,
+          score: Math.max(0, Math.min(100, score)),
+          breakdown: { h2Rank, experienceAvg, peerConsensus, skillVoteNet, recencyBonus },
+          peerRatingCount: peerForPlayer.length,
+        };
+      }
+
+      setScores(result);
+    };
+
+    compute();
+  }, [players]);
+
+  return scores;
+}

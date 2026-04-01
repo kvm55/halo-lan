@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useSession, usePlayers, useDraft, useMaps, useMapVoting, useGames, useSettings } from "@/lib/hooks";
+import { useSession, usePlayers, useDraft, useMaps, useMapVoting, useGames, useSettings, useCompositeScores } from "@/lib/hooks";
+import type { CompositeScore } from "@/lib/hooks";
 import { supabase } from "@/lib/supabase";
 import { displayName, shortName } from "@/lib/types";
 import type { AppScreen, Player, HaloMap } from "@/lib/types";
@@ -25,6 +26,7 @@ export default function Home() {
   const maps = useMaps();
   const voting = useMapVoting(draft?.id || null, session.playerId);
   const { settings, updateSetting, ranksRevealed } = useSettings();
+  const compositeScores = useCompositeScores(players);
   const { games, logGame } = useGames(draft?.id || null);
 
   const [screen, setScreen] = useState<AppScreen>("intro");
@@ -158,6 +160,7 @@ export default function Home() {
           logGame={logGame}
           ranksRevealed={ranksRevealed}
           updateSetting={updateSetting}
+          compositeScores={compositeScores}
         />
       )}
     </div>
@@ -580,9 +583,10 @@ interface MainAppProps {
   logGame: ReturnType<typeof useGames>["logGame"];
   ranksRevealed: boolean;
   updateSetting: (key: string, value: string) => Promise<void>;
+  compositeScores: Record<string, CompositeScore>;
 }
 
-function MainApp({ screen, setScreen, setNeedsProfile, session, players, draft, picks, createDraft, makePick, maps, voting, games, logGame, ranksRevealed, updateSetting }: MainAppProps) {
+function MainApp({ screen, setScreen, setNeedsProfile, session, players, draft, picks, createDraft, makePick, maps, voting, games, logGame, ranksRevealed, updateSetting, compositeScores }: MainAppProps) {
   const [draftMode, setDraftMode] = useState<"8v8" | "4v4" | "2v2" | "ffa">("8v8");
   const [captainA, setCaptainA] = useState("");
   const [captainB, setCaptainB] = useState("");
@@ -654,7 +658,7 @@ function MainApp({ screen, setScreen, setNeedsProfile, session, players, draft, 
 
           <nav className="flex gap-1 mt-4 overflow-x-auto">
             {(["lobby", "equipment", "draft", "voting", "games"] as const).map(tab => {
-              const wip = tab === "draft" || tab === "games";
+              const wip = tab === "games";
               const tabLabels: Record<string, string> = { lobby: "LOBBY", equipment: "EQUIPMENT", draft: "DRAFT", voting: "MAPS", games: "GAMES" };
               return (
               <button
@@ -745,22 +749,18 @@ function MainApp({ screen, setScreen, setNeedsProfile, session, players, draft, 
           </div>
         )}
 
-        {/* ---- DRAFT (WIP) ---- */}
+        {/* ---- SNAKE DRAFT ---- */}
         {screen === "draft" && (
-          <WIPScreen
-            title="SNAKE DRAFT"
-            features={[
-              "Team captains: Paul + Parker",
-              "Snake draft pick order (1-2-2-2-1)",
-              "Flexible team sizes: 8v8, 4v4, 2v2, FFA",
-              "Redraft between series",
-              "Draft seeded by combat records + peer assessments",
-            ]}
-            eta="GAME NIGHT"
+          <SnakeDraft
+            session={session}
+            players={players}
+            draft={draft}
+            picks={picks}
+            createDraft={createDraft}
+            makePick={makePick}
+            compositeScores={compositeScores}
           />
         )}
-
-        {/* Draft v2 code saved in git history */}
 
         {/* ---- EQUIPMENT ---- */}
         {screen === "equipment" && (
@@ -1028,6 +1028,244 @@ function EquipmentEditor({ player }: { player: Player }) {
             className="w-full py-2 border border-green-500 text-green-400 hover:bg-green-500/10 tracking-widest text-sm uppercase disabled:opacity-30">
             ADD {qty > 1 ? `${qty}x ` : ""}TO LOADOUT
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SnakeDraft({ session, players, draft, picks, createDraft, makePick, compositeScores }: {
+  session: ReturnType<typeof useSession>;
+  players: Player[];
+  draft: ReturnType<typeof useDraft>["draft"];
+  picks: ReturnType<typeof useDraft>["picks"];
+  createDraft: ReturnType<typeof useDraft>["createDraft"];
+  makePick: ReturnType<typeof useDraft>["makePick"];
+  compositeScores: Record<string, CompositeScore>;
+}) {
+  const [draftMode, setDraftMode] = useState<"8v8" | "4v4" | "2v2">("8v8");
+  const [captainA, setCaptainA] = useState("");
+  const [captainB, setCaptainB] = useState("");
+
+  const confirmedPlayers = players.filter(p => p.profile_confirmed);
+  const alphaTeam = picks.filter(p => p.team === "alpha");
+  const bravoTeam = picks.filter(p => p.team === "bravo");
+
+  const isAdmin = session.player?.is_admin;
+  const isCaptain = session.playerId === draft?.captain_a || session.playerId === draft?.captain_b;
+  const isMyPick = session.playerId === draft?.current_pick;
+
+  const modePlayerCount: Record<string, number> = { "8v8": 16, "4v4": 8, "2v2": 4 };
+
+  // Players available to be picked (not captains, not already picked)
+  const availablePlayers = confirmedPlayers.filter(p =>
+    p.id !== draft?.captain_a &&
+    p.id !== draft?.captain_b &&
+    !picks.some(pick => pick.player_id === p.id)
+  ).sort((a, b) => (compositeScores[b.id]?.score || 0) - (compositeScores[a.id]?.score || 0));
+
+  // ---- SETUP (no active draft or draft complete) ----
+  if (!draft || draft.status === "complete") {
+    return (
+      <div className="space-y-6">
+        {draft?.status === "complete" && (
+          <>
+            <div className="kpi-card p-4 rounded text-center">
+              <h2 className="text-xl hud-glow text-green-300 mb-2">DRAFT COMPLETE</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="kpi-card p-3 rounded">
+                <h3 className="text-xs text-blue-400 uppercase tracking-widest mb-2">ALPHA TEAM</h3>
+                <div className="text-blue-300 text-sm font-bold mb-2 pb-2 border-b border-blue-900/30">
+                  CPT: {(() => { const p = players.find(x => x.id === draft.captain_a); return p ? displayName(p) : "?"; })()}
+                </div>
+                {alphaTeam.map(pick => (
+                  <div key={pick.id} className="text-blue-400/80 text-sm py-1 border-b border-blue-900/20">
+                    {pick.player ? displayName(pick.player) : "?"}
+                  </div>
+                ))}
+              </div>
+              <div className="kpi-card p-3 rounded">
+                <h3 className="text-xs text-red-400 uppercase tracking-widest mb-2">BRAVO TEAM</h3>
+                <div className="text-red-300 text-sm font-bold mb-2 pb-2 border-b border-red-900/30">
+                  CPT: {(() => { const p = players.find(x => x.id === draft.captain_b); return p ? displayName(p) : "?"; })()}
+                </div>
+                {bravoTeam.map(pick => (
+                  <div key={pick.id} className="text-red-400/80 text-sm py-1 border-b border-red-900/20">
+                    {pick.player ? displayName(pick.player) : "?"}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* SETUP - admin only */}
+        {isAdmin && (
+          <div className="kpi-card p-4 rounded">
+            <h2 className="text-xs tracking-[0.3em] text-green-600 uppercase mb-4">
+              {draft?.status === "complete" ? "// REDRAFT" : "// DRAFT SETUP"}
+            </h2>
+
+            <div className="mb-4">
+              <label className="text-xs text-green-600 uppercase block mb-2">MODE</label>
+              <div className="flex gap-2">
+                {(["8v8", "4v4", "2v2"] as const).map(mode => (
+                  <button key={mode} onClick={() => setDraftMode(mode)}
+                    className={`px-4 py-2 border text-sm ${draftMode === mode ? "border-green-400 bg-green-400/10 text-green-300" : "border-green-900/30 text-green-700"}`}>
+                    {mode}
+                  </button>
+                ))}
+              </div>
+              <p className="text-green-800 text-[10px] mt-1">
+                Need {modePlayerCount[draftMode]} players. {confirmedPlayers.length} confirmed.
+                {confirmedPlayers.length < modePlayerCount[draftMode] && <span className="text-red-400"> ({modePlayerCount[draftMode] - confirmedPlayers.length} more needed)</span>}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div>
+                <label className="text-xs text-blue-400 uppercase block mb-2">ALPHA CAPTAIN</label>
+                <select value={captainA} onChange={e => setCaptainA(e.target.value)}
+                  className="w-full bg-black/50 border border-blue-800 text-blue-300 px-3 py-2 text-sm">
+                  <option value="">Select...</option>
+                  {confirmedPlayers.filter(p => p.id !== captainB).map(p => (
+                    <option key={p.id} value={p.id}>{displayName(p)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs text-red-400 uppercase block mb-2">BRAVO CAPTAIN</label>
+                <select value={captainB} onChange={e => setCaptainB(e.target.value)}
+                  className="w-full bg-black/50 border border-red-800 text-red-300 px-3 py-2 text-sm">
+                  <option value="">Select...</option>
+                  {confirmedPlayers.filter(p => p.id !== captainA).map(p => (
+                    <option key={p.id} value={p.id}>{displayName(p)}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <button onClick={() => { if (captainA && captainB) createDraft(draftMode, captainA, captainB); }}
+              disabled={!captainA || !captainB}
+              className="w-full py-3 border-2 border-amber-500 text-amber-400 hover:bg-amber-500/10 tracking-widest text-sm uppercase disabled:opacity-30 border-pulse">
+              START SNAKE DRAFT
+            </button>
+          </div>
+        )}
+
+        {!isAdmin && !draft && (
+          <div className="kpi-card p-8 rounded text-center">
+            <p className="text-green-700">Waiting for admin to start the draft...</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ---- ACTIVE DRAFT ----
+  const captainAPlayer = players.find(p => p.id === draft.captain_a);
+  const captainBPlayer = players.find(p => p.id === draft.captain_b);
+  const currentPicker = players.find(p => p.id === draft.current_pick);
+
+  return (
+    <div className="space-y-4">
+      {/* Pick indicator */}
+      <div className="kpi-card p-4 rounded text-center border-amber-500/20">
+        <p className="text-xs text-green-600 uppercase tracking-widest">
+          PICK #{(draft.pick_number || 0) + 1} // SNAKE DRAFT // {draftMode}
+        </p>
+        <p className="text-xl text-amber-400 hud-glow-amber mt-1 font-bold">
+          {isMyPick ? "YOUR PICK" : `${currentPicker ? displayName(currentPicker) : "?"}'s PICK`}
+        </p>
+      </div>
+
+      {/* Draft board - two columns */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="kpi-card p-3 rounded border-blue-900/30">
+          <h3 className="text-xs text-blue-400 uppercase tracking-widest mb-2">
+            ALPHA ({alphaTeam.length + 1})
+          </h3>
+          <div className="text-blue-300 text-sm font-bold pb-1 border-b border-blue-900/30 mb-1">
+            {captainAPlayer ? displayName(captainAPlayer) : "?"} (C)
+          </div>
+          {alphaTeam.map(pick => (
+            <div key={pick.id} className="text-blue-400/70 text-xs py-1 border-b border-blue-900/10 flex items-center gap-1">
+              <span className="text-blue-800 w-4">#{pick.pick_order + 1}</span>
+              {pick.player ? shortName(pick.player) : "?"}
+            </div>
+          ))}
+        </div>
+        <div className="kpi-card p-3 rounded border-red-900/30">
+          <h3 className="text-xs text-red-400 uppercase tracking-widest mb-2">
+            BRAVO ({bravoTeam.length + 1})
+          </h3>
+          <div className="text-red-300 text-sm font-bold pb-1 border-b border-red-900/30 mb-1">
+            {captainBPlayer ? displayName(captainBPlayer) : "?"} (C)
+          </div>
+          {bravoTeam.map(pick => (
+            <div key={pick.id} className="text-red-400/70 text-xs py-1 border-b border-red-900/10 flex items-center gap-1">
+              <span className="text-red-800 w-4">#{pick.pick_order + 1}</span>
+              {pick.player ? shortName(pick.player) : "?"}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Available players (captain view with composite scores) */}
+      {isMyPick ? (
+        <div className="kpi-card p-3 rounded border-amber-500/20">
+          <h3 className="text-xs text-amber-400 uppercase tracking-widest mb-3">AVAILABLE SPARTANS</h3>
+          <div className="space-y-2">
+            {availablePlayers.map(p => {
+              const cs = compositeScores[p.id];
+              return (
+                <button key={p.id} onClick={() => makePick(p.id)}
+                  className="w-full kpi-card p-3 rounded flex items-center gap-3 text-left hover:border-amber-400 transition-all">
+                  {/* Rank icons */}
+                  <div className="flex gap-0.5 shrink-0">
+                    {p.h2_rank > 0 && <img src={`/ranks/rank_${p.h2_rank}.png`} alt="H2" className="w-5 h-5" />}
+                    {p.h3_rank && p.h3_rank !== "never" && <img src={`/ranks/h3/${p.h3_rank}.svg`} alt="H3" className="w-5 h-5" />}
+                  </div>
+                  {/* Name + score */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-300 text-sm font-bold">{displayName(p)}</span>
+                      <span className="text-green-700 text-xs">// {p.gamertag}</span>
+                    </div>
+                    {cs && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 h-1.5 bg-green-900/30 rounded overflow-hidden">
+                          <div className="h-full bg-amber-500" style={{ width: `${cs.score}%` }} />
+                        </div>
+                        <span className="text-amber-400 text-xs font-bold">{cs.score}</span>
+                        {cs.peerRatingCount > 0 && <span className="text-green-800 text-[10px]">{cs.peerRatingCount} ratings</span>}
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-amber-400 text-xs font-bold tracking-widest shrink-0">PICK</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="kpi-card p-6 rounded text-center">
+          <p className="text-green-600 animate-pulse">
+            Waiting for {currentPicker ? displayName(currentPicker) : "?"} to pick...
+          </p>
+          {/* Show available players (no pick buttons) */}
+          <div className="mt-4 space-y-1">
+            {availablePlayers.map(p => {
+              const cs = compositeScores[p.id];
+              return (
+                <div key={p.id} className="flex items-center justify-between py-1 px-2 text-sm">
+                  <span className="text-green-400">{shortName(p)}</span>
+                  {isCaptain && cs && <span className="text-amber-400/60 text-xs">{cs.score}</span>}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
