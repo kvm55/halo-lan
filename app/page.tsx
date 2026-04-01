@@ -1597,12 +1597,14 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
   const [mode, setMode] = useState<"vote" | "results">("vote");
   const [gameFilter, setGameFilter] = useState("all");
   const [sizeFilter, setSizeFilter] = useState<string>("all");
+  const [modeFilter, setModeFilter] = useState<string>("all");
   const [localVoted, setLocalVoted] = useState<Set<string>>(new Set());
 
   // Filter maps
   const filtered = maps.filter(m => {
     if (gameFilter !== "all" && m.game !== gameFilter) return false;
     if (sizeFilter !== "all" && m.map_size !== sizeFilter) return false;
+    if (modeFilter !== "all" && m.game_mode.toLowerCase() !== modeFilter) return false;
     return true;
   });
 
@@ -1637,15 +1639,14 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
   function pickNewMatchup() {
     if (uniqueMaps.length < 2) return;
     const shuffled = [...uniqueMaps].sort(() => Math.random() - 0.5);
-    // Try to match same size first
     const first = shuffled[0];
-    const sameSize = shuffled.slice(1).find(m => m.map_size === first.map_size && m.id !== first.id);
-    if (sameSize) {
-      setMatchup([first, sameSize]);
-    } else {
-      // Fallback to any two
-      setMatchup([shuffled[0], shuffled[1]]);
-    }
+    // Best: same size + same game mode
+    const bestMatch = shuffled.slice(1).find(m => m.map_size === first.map_size && m.game_mode === first.game_mode && m.id !== first.id);
+    // Good: same size, any mode
+    const goodMatch = shuffled.slice(1).find(m => m.map_size === first.map_size && m.id !== first.id);
+    // Fallback: any two
+    const match = bestMatch || goodMatch || shuffled[1];
+    setMatchup([first, match]);
   }
 
   const pickWinner = async (winner: HaloMap, loser: HaloMap) => {
@@ -1741,11 +1742,11 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
         ))}
       </div>
 
-      {/* Game filter */}
+      {/* Game + game type filters */}
       <div className="flex gap-1 overflow-x-auto pb-1">
         <button onClick={() => { setGameFilter("all"); setMatchup(null); setMatchupCount(0); }}
           className={`px-2 py-1 border text-[10px] whitespace-nowrap ${gameFilter === "all" ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
-          ALL
+          ALL GAMES
         </button>
         {gameNames.map(g => (
           <button key={g} onClick={() => { setGameFilter(g); setMatchup(null); setMatchupCount(0); }}
@@ -1753,6 +1754,17 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
             {g.replace("Halo ", "H").toUpperCase()}
           </button>
         ))}
+      </div>
+      <div className="flex gap-1 overflow-x-auto pb-1">
+        {["Slayer", "CTF", "SWAT", "Infection", "Shotty Snipers", "Fiesta", "Oddball", "King of the Hill", "Rockets"].map(gt => {
+          const active = modeFilter === gt.toLowerCase();
+          return (
+            <button key={gt} onClick={() => { setModeFilter(active ? "all" : gt.toLowerCase()); setMatchup(null); setMatchupCount(0); }}
+              className={`px-2 py-1 border text-[10px] whitespace-nowrap rounded ${active ? "border-amber-400 text-amber-300 bg-amber-400/10" : "border-green-900/30 text-green-800"}`}>
+              {gt.toUpperCase()}
+            </button>
+          );
+        })}
       </div>
 
       {mode === "vote" && (
