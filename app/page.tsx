@@ -2039,6 +2039,8 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
 
 function CombinedResults({ maps, voting }: { maps: HaloMap[]; voting: ReturnType<typeof useMapVoting> }) {
   const [gametypeScores, setGametypeScores] = useState<Record<string, number>>({});
+  const [mapWins, setMapWins] = useState<Record<string, number>>({});
+  const [mapMatchups, setMapMatchups] = useState<Record<string, number>>({});
   const [resultsTab, setResultsTab] = useState<"maps" | "gametypes">("maps");
 
   const GT_NAMES: Record<string, string> = {
@@ -2049,7 +2051,7 @@ function CombinedResults({ maps, voting }: { maps: HaloMap[]; voting: ReturnType
   };
 
   useEffect(() => {
-    // Aggregate all game type votes across all players
+    // Aggregate game type votes
     supabase.from("halo_gametype_votes").select("gametype, wins").then(({ data }) => {
       if (data) {
         const totals: Record<string, number> = {};
@@ -2059,10 +2061,28 @@ function CombinedResults({ maps, voting }: { maps: HaloMap[]; voting: ReturnType
         setGametypeScores(totals);
       }
     });
+
+    // Aggregate map matchup wins
+    supabase.from("halo_map_matchups").select("winner_id, loser_id").then(({ data }) => {
+      if (data) {
+        const wins: Record<string, number> = {};
+        const total: Record<string, number> = {};
+        data.forEach((m: { winner_id: string; loser_id: string }) => {
+          wins[m.winner_id] = (wins[m.winner_id] || 0) + 1;
+          total[m.winner_id] = (total[m.winner_id] || 0) + 1;
+          total[m.loser_id] = (total[m.loser_id] || 0) + 1;
+        });
+        setMapWins(wins);
+        setMapMatchups(total);
+      }
+    });
   }, []);
 
   const rankedGametypes = Object.entries(gametypeScores)
     .sort(([, a], [, b]) => b - a);
+
+  // Sort maps by win count from matchups
+  const rankedMaps = [...maps].sort((a, b) => (mapWins[b.id] || 0) - (mapWins[a.id] || 0));
 
   return (
     <div className="space-y-4">
@@ -2079,10 +2099,11 @@ function CombinedResults({ maps, voting }: { maps: HaloMap[]; voting: ReturnType
 
       {resultsTab === "maps" && (
         <div className="space-y-1">
-          {maps.map((map, i) => {
-            const score = voting.tally[map.id] || 0;
-            const voterCount = voting.allVotes.filter(v => v.map_id === map.id).length;
-            if (score === 0 && voterCount === 0) return null;
+          {rankedMaps.map((map, i) => {
+            const wins = mapWins[map.id] || 0;
+            const total = mapMatchups[map.id] || 0;
+            if (wins === 0 && total === 0) return null;
+            const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
             return (
               <div key={map.id} className="kpi-card p-2 rounded flex items-center gap-3">
                 <span className={`text-lg font-bold w-6 text-center ${i < 3 ? "text-amber-400" : i < 10 ? "text-green-500" : "text-green-800"}`}>
@@ -2099,14 +2120,14 @@ function CombinedResults({ maps, voting }: { maps: HaloMap[]; voting: ReturnType
                   {map.description && <p className="text-green-700 text-[10px] truncate">{map.description}</p>}
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="text-green-300 font-bold text-sm">{score}pts</div>
-                  <div className="text-green-800 text-[10px]">{voterCount} votes</div>
+                  <div className="text-green-300 font-bold text-sm">{wins} wins</div>
+                  <div className="text-green-800 text-[10px]">{winRate}% ({total} matchups)</div>
                 </div>
               </div>
             );
           })}
-          {maps.filter(m => (voting.tally[m.id] || 0) > 0).length === 0 && (
-            <p className="text-green-800 text-center py-8">No map votes yet. Switch to MAPS tab.</p>
+          {rankedMaps.filter(m => (mapWins[m.id] || 0) > 0).length === 0 && (
+            <p className="text-green-800 text-center py-8">No map votes yet. Switch to MAPS tab to start voting.</p>
           )}
         </div>
       )}
