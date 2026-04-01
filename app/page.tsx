@@ -1593,8 +1593,109 @@ function PlayerCard({ player: p, ranksRevealed }: { player: Player; ranksReveale
   );
 }
 
+function GameTypeVoting({ playerId }: { playerId: string | null }) {
+  const TYPES = [
+    { id: "slayer", name: "SLAYER", desc: "Team deathmatch. First to 50 kills. The classic.", note: "Any size" },
+    { id: "ctf", name: "CAPTURE THE FLAG", desc: "Grab the enemy flag, return it to base. Teamwork.", note: "Best 4v4-8v8" },
+    { id: "swat", name: "SWAT", desc: "No shields, no radar. Headshots only. Pure aim.", note: "Best 4v4" },
+    { id: "infection", name: "ZOMBIES", desc: "One team infects the other. Chaos grows.", note: "Best 8+ players" },
+    { id: "shotty_snipers", name: "SHOTTY SNIPERS", desc: "Sniper + shotgun. Long or close, nothing between.", note: "Best 4v4" },
+    { id: "fiesta", name: "FIESTA", desc: "Random weapons every spawn. Rockets or plasma pistol.", note: "Any size" },
+    { id: "oddball", name: "ODDBALL", desc: "Hold the skull to score. Everyone wants you dead.", note: "Best 4v4" },
+    { id: "koth", name: "KING OF THE HILL", desc: "Control the hill zone. Zone moves. Fights get messy.", note: "Best 4v4-8v8" },
+    { id: "rockets", name: "ROCKETS", desc: "Rocket launchers only. Explosions everywhere.", note: "Chaos" },
+    { id: "swords", name: "SWORDS", desc: "Energy swords only. Lunging close quarters.", note: "Small maps" },
+    { id: "team_brs", name: "TEAM BRs", desc: "Battle rifle start. Clean gunfights. Competitive.", note: "Best 4v4" },
+    { id: "assault", name: "ASSAULT", desc: "Plant a bomb at enemy base. Reverse CTF.", note: "Best 4v4-8v8" },
+  ];
+
+  const [matchup, setMatchup] = useState<[typeof TYPES[0], typeof TYPES[0]] | null>(null);
+  const [votes, setVotes] = useState<Record<string, number>>({});
+  const [count, setCount] = useState(0);
+  const ROUNDS = 10;
+
+  useEffect(() => {
+    if (!matchup) pickMatchup();
+  }, []);
+
+  function pickMatchup() {
+    const shuffled = [...TYPES].sort(() => Math.random() - 0.5);
+    setMatchup([shuffled[0], shuffled[1]]);
+  }
+
+  const pick = (winnerId: string) => {
+    setVotes(prev => ({ ...prev, [winnerId]: (prev[winnerId] || 0) + 1 }));
+    setCount(c => c + 1);
+    if (count + 1 >= ROUNDS) {
+      setMatchup(null);
+    } else {
+      pickMatchup();
+    }
+  };
+
+  const ranked = [...TYPES].sort((a, b) => (votes[b.id] || 0) - (votes[a.id] || 0));
+
+  if (!matchup || count >= ROUNDS) {
+    return (
+      <div className="space-y-4">
+        <div className="kpi-card p-6 rounded text-center">
+          <div className="text-xl hud-glow text-amber-300 mb-2">GAME TYPE RANKINGS</div>
+          <p className="text-green-700 text-sm mb-4">{count} matchups voted</p>
+          <div className="flex gap-3 justify-center">
+            <button onClick={() => { setCount(0); pickMatchup(); }}
+              className="px-4 py-2 border border-amber-500 text-amber-400 text-xs tracking-widest">VOTE MORE</button>
+          </div>
+        </div>
+        <div className="space-y-1">
+          {ranked.filter(t => (votes[t.id] || 0) > 0).map((t, i) => (
+            <div key={t.id} className="kpi-card p-3 rounded flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className={`text-lg font-bold w-6 text-center ${i < 3 ? "text-amber-400" : "text-green-700"}`}>{i + 1}</span>
+                <div>
+                  <span className="text-green-300 text-sm font-bold">{t.name}</span>
+                  <p className="text-green-700 text-[10px]">{t.desc}</p>
+                </div>
+              </div>
+              <span className="text-green-400 font-bold">{votes[t.id] || 0}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-1 bg-green-900/30 rounded overflow-hidden">
+          <div className="h-full bg-amber-400 transition-all" style={{ width: `${(count / ROUNDS) * 100}%` }} />
+        </div>
+        <span className="text-green-700 text-xs">{count}/{ROUNDS}</span>
+      </div>
+
+      <p className="text-center text-amber-400 text-sm">Which game type do you want to play more?</p>
+
+      <div className="grid grid-cols-2 gap-3">
+        {matchup.map(t => (
+          <button key={t.id} onClick={() => pick(t.id)}
+            className="kpi-card p-4 rounded text-left border border-green-900/30 hover:border-amber-400 transition-all">
+            <h3 className="text-lg font-bold text-amber-300 mb-1">{t.name}</h3>
+            <p className="text-green-600 text-xs leading-relaxed mb-2">{t.desc}</p>
+            <span className="text-[10px] px-2 py-0.5 border border-green-900/30 text-green-700 rounded">{t.note}</span>
+            <p className="text-center text-amber-500 text-xs mt-3 font-bold tracking-widest">PICK</p>
+          </button>
+        ))}
+      </div>
+
+      <button onClick={pickMatchup} className="w-full py-2 border border-green-900/30 text-green-800 text-xs tracking-widest hover:text-green-500">
+        SKIP BOTH
+      </button>
+    </div>
+  );
+}
+
 function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: ReturnType<typeof useMapVoting>; playerId: string | null }) {
-  const [mode, setMode] = useState<"vote" | "results">("vote");
+  const [mode, setMode] = useState<"vote" | "gametypes" | "results">("vote");
   const [gameFilter, setGameFilter] = useState("all");
   const [sizeFilter, setSizeFilter] = useState<string>("all");
   const [modeFilter, setModeFilter] = useState<string>("all");
@@ -1718,7 +1819,11 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
         <div className="flex gap-1">
           <button onClick={() => setMode("vote")}
             className={`px-3 py-1 border text-xs ${mode === "vote" ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
-            VOTE
+            MAPS
+          </button>
+          <button onClick={() => setMode("gametypes")}
+            className={`px-3 py-1 border text-xs ${mode === "gametypes" ? "border-amber-400 text-amber-300" : "border-green-900/30 text-green-800"}`}>
+            MODES
           </button>
           <button onClick={() => setMode("results")}
             className={`px-3 py-1 border text-xs ${mode === "results" ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
@@ -1810,6 +1915,11 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
             </div>
           )}
         </>
+      )}
+
+      {/* ---- GAME TYPE A/B VOTING ---- */}
+      {mode === "gametypes" && (
+        <GameTypeVoting playerId={playerId} />
       )}
 
       {mode === "results" && (
@@ -1988,11 +2098,7 @@ function CortanaHelper({ screen, playerCount }: { screen: AppScreen; playerCount
   useEffect(() => { setDismissed(false); setMinimized(false); }, [screen]);
 
   const tips: Record<string, { text: string; action?: string }> = {
-    lobby: playerCount < 5
-      ? { text: `${playerCount} Spartan${playerCount === 1 ? "" : "s"} confirmed. Share the link to get more players checked in.`, action: "Copy link" }
-      : playerCount < 12
-      ? { text: `${playerCount} Spartans and counting. Tap any player card to see their combat record or rate their skill.` }
-      : { text: `${playerCount} Spartans confirmed. Looking like a full 8v8. Check the Equipment tab to make sure we have enough controllers.` },
+    lobby: { text: `Welcome, Spartan. Tap any player to see their combat record and rate their skills. Check EQUIPMENT to log what you're bringing. MAPS to vote on the playlist.` },
     equipment: { text: "Add what you're bringing. Tap + XBOX, + CONTROLLER, or + TV. Everyone can see the full manifest below." },
     draft: { text: "Snake draft is coming. Captains will pick teams based on combat records and peer assessments. Get your ratings in." },
     voting: { text: "Vote on every map. PLAY if you want it in the rotation, SKIP if not. Results tab shows the current leaderboard." },
