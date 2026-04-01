@@ -1219,31 +1219,62 @@ function SnakeDraft({ session, players, draft, picks, createDraft, makePick, com
           <div className="space-y-2">
             {availablePlayers.map(p => {
               const cs = compositeScores[p.id];
+              const expBadge = (exp: string) => {
+                if (exp === "sweaty") return { label: "SWEATY", color: "text-amber-400 border-amber-500/30 bg-amber-500/10" };
+                if (exp === "experienced") return { label: "EXP", color: "text-green-400 border-green-500/30 bg-green-500/10" };
+                if (exp === "casual") return { label: "CASUAL", color: "text-green-700 border-green-800/30" };
+                return null;
+              };
+              // Find their strongest game
+              const gameExps = [
+                { game: "CE", exp: p.h1_experience },
+                { game: "H2", exp: p.h2_experience },
+                { game: "H3", exp: p.h3_experience },
+                { game: "H5", exp: p.h5_experience },
+                { game: "INF", exp: p.hinf_experience },
+              ].filter(g => g.exp && g.exp !== "never");
+              const sweaties = gameExps.filter(g => g.exp === "sweaty");
+              const lastPlayed = p.last_played_year === 2026 ? "ACTIVE" : p.last_played_year === 2025 ? "RECENT" : p.last_played_year > 0 ? "RUSTY" : null;
+
               return (
                 <button key={p.id} onClick={() => makePick(p.id)}
-                  className="w-full kpi-card p-3 rounded flex items-center gap-3 text-left hover:border-amber-400 transition-all">
-                  {/* Rank icons */}
-                  <div className="flex gap-0.5 shrink-0">
-                    {p.h2_rank > 0 && <img src={`/ranks/rank_${p.h2_rank}.png`} alt="H2" className="w-5 h-5" />}
-                    {p.h3_rank && p.h3_rank !== "never" && <img src={`/ranks/h3/${p.h3_rank}.svg`} alt="H3" className="w-5 h-5" />}
-                  </div>
-                  {/* Name + score */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                  className="w-full kpi-card p-3 rounded text-left hover:border-amber-400 transition-all">
+                  <div className="flex items-center gap-2 mb-2">
+                    {/* Rank icons */}
+                    {p.h2_rank > 0 && <img src={`/ranks/rank_${p.h2_rank}.png`} alt="H2" className="w-6 h-6" />}
+                    {p.h3_rank && p.h3_rank !== "never" && <img src={`/ranks/h3/${p.h3_rank}.svg`} alt="H3" className="w-6 h-6" />}
+                    {p.h5_csr && p.h5_csr !== "never" && <img src={`/ranks/h5/${p.h5_csr}.png`} alt="H5" className="w-6 h-6 object-contain" />}
+                    {p.hinf_csr && p.hinf_csr !== "never" && <img src={`/ranks/hinf/${p.hinf_csr}.png`} alt="INF" className="w-6 h-6 object-contain" />}
+                    <div className="flex-1 min-w-0">
                       <span className="text-green-300 text-sm font-bold">{displayName(p)}</span>
-                      <span className="text-green-700 text-xs">// {p.gamertag}</span>
+                      <span className="text-green-700 text-xs ml-1">// {p.gamertag}</span>
                     </div>
-                    {cs && (
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="flex-1 h-1.5 bg-green-900/30 rounded overflow-hidden">
-                          <div className="h-full bg-amber-500" style={{ width: `${cs.score}%` }} />
-                        </div>
-                        <span className="text-amber-400 text-xs font-bold">{cs.score}</span>
-                        {cs.peerRatingCount > 0 && <span className="text-green-800 text-[10px]">{cs.peerRatingCount} ratings</span>}
-                      </div>
-                    )}
+                    <span className="text-amber-400 text-sm font-bold">{cs?.score || 0}</span>
                   </div>
-                  <span className="text-amber-400 text-xs font-bold tracking-widest shrink-0">PICK</span>
+                  {/* Badges row */}
+                  <div className="flex gap-1 flex-wrap mb-1.5">
+                    {sweaties.length > 0 && sweaties.map(g => (
+                      <span key={g.game} className="text-[9px] px-1.5 py-0.5 border rounded text-amber-400 border-amber-500/30 bg-amber-500/10">{g.game} SWEATY</span>
+                    ))}
+                    {gameExps.length > 0 && sweaties.length === 0 && (
+                      <span className="text-[9px] px-1.5 py-0.5 border rounded text-green-500 border-green-600/30">{gameExps.length} GAMES PLAYED</span>
+                    )}
+                    {lastPlayed && (
+                      <span className={`text-[9px] px-1.5 py-0.5 border rounded ${lastPlayed === "ACTIVE" ? "text-green-400 border-green-500/30" : lastPlayed === "RECENT" ? "text-green-600 border-green-700/30" : "text-red-400 border-red-800/30"}`}>{lastPlayed}</span>
+                    )}
+                    {p.sensitivity > 6 && <span className="text-[9px] px-1.5 py-0.5 border rounded text-blue-400 border-blue-500/30">HIGH SENS</span>}
+                    {p.inverted_y && <span className="text-[9px] px-1.5 py-0.5 border rounded text-purple-400 border-purple-500/30">INVERTED</span>}
+                    {cs && cs.peerRatingCount > 0 && <span className="text-[9px] px-1.5 py-0.5 border rounded text-green-700 border-green-800/30">{cs.peerRatingCount} PEER RATINGS</span>}
+                  </div>
+                  {/* Score bar */}
+                  {cs && (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 bg-green-900/30 rounded overflow-hidden">
+                        <div className="h-full bg-amber-500 transition-all" style={{ width: `${cs.score}%` }} />
+                      </div>
+                      <span className="text-amber-400 text-[10px] font-bold tracking-widest shrink-0">PICK</span>
+                    </div>
+                  )}
                 </button>
               );
             })}
