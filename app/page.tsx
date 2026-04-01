@@ -590,9 +590,23 @@ function MainApp({ screen, setScreen, setNeedsProfile, session, players, draft, 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const checkedIn = players.filter(p => p.checked_in);
-  const totalControllers = players.reduce((s, p) => s + (p.controller_count || 0), 0);
-  const totalXbox = players.reduce((s, p) => s + (p.xbox_count || 0), 0);
-  const totalTVs = players.reduce((s, p) => s + (p.tv_count || 0), 0);
+  const [equipTotals, setEquipTotals] = useState({ xbox: 0, controller: 0, tv: 0 });
+  useEffect(() => {
+    supabase.from("halo_equipment").select("item_type").then(({ data }) => {
+      if (data) {
+        const counts = { xbox: 0, controller: 0, tv: 0 };
+        data.forEach((i: { item_type: string }) => {
+          if (i.item_type === "xbox") counts.xbox++;
+          else if (i.item_type === "controller") counts.controller++;
+          else if (i.item_type === "tv") counts.tv++;
+        });
+        setEquipTotals(counts);
+      }
+    });
+  }, []);
+  const totalXbox = equipTotals.xbox;
+  const totalControllers = equipTotals.controller;
+  const totalTVs = equipTotals.tv;
 
   const alphaTeam = picks.filter(p => p.team === "alpha");
   const bravoTeam = picks.filter(p => p.team === "bravo");
