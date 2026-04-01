@@ -1594,19 +1594,24 @@ function PlayerCard({ player: p, ranksRevealed }: { player: Player; ranksReveale
 }
 
 function GameTypeVoting({ playerId }: { playerId: string | null }) {
-  const TYPES = [
-    { id: "slayer", name: "SLAYER", desc: "Team deathmatch. First to 50 kills. The classic.", note: "Any size" },
-    { id: "ctf", name: "CAPTURE THE FLAG", desc: "Grab the enemy flag, return it to base. Teamwork.", note: "Best 4v4-8v8" },
-    { id: "swat", name: "SWAT", desc: "No shields, no radar. Headshots only. Pure aim.", note: "Best 4v4" },
-    { id: "infection", name: "ZOMBIES", desc: "One team infects the other. Chaos grows.", note: "Best 8+ players" },
-    { id: "shotty_snipers", name: "SHOTTY SNIPERS", desc: "Sniper + shotgun. Long or close, nothing between.", note: "Best 4v4" },
-    { id: "fiesta", name: "FIESTA", desc: "Random weapons every spawn. Rockets or plasma pistol.", note: "Any size" },
-    { id: "oddball", name: "ODDBALL", desc: "Hold the skull to score. Everyone wants you dead.", note: "Best 4v4" },
-    { id: "koth", name: "KING OF THE HILL", desc: "Control the hill zone. Zone moves. Fights get messy.", note: "Best 4v4-8v8" },
-    { id: "rockets", name: "ROCKETS", desc: "Rocket launchers only. Explosions everywhere.", note: "Chaos" },
-    { id: "swords", name: "SWORDS", desc: "Energy swords only. Lunging close quarters.", note: "Small maps" },
-    { id: "team_brs", name: "TEAM BRs", desc: "Battle rifle start. Clean gunfights. Competitive.", note: "Best 4v4" },
-    { id: "assault", name: "ASSAULT", desc: "Plant a bomb at enemy base. Reverse CTF.", note: "Best 4v4-8v8" },
+  const [dbTypes, setDbTypes] = useState<{ id: string; name: string; desc: string; note: string }[]>([]);
+
+  useEffect(() => {
+    supabase.from("halo_game_types").select("*").order("name").then(({ data }) => {
+      if (data) {
+        setDbTypes(data.map((t: { id: string; name: string; description: string; player_note: string }) => ({
+          id: t.id,
+          name: t.name,
+          desc: t.description,
+          note: t.player_note || "",
+        })));
+      }
+    });
+  }, []);
+
+  const TYPES = dbTypes.length > 0 ? dbTypes : [
+    { id: "slayer", name: "SLAYER", desc: "Classic deathmatch. Kill the enemy team.", note: "4-16 players" },
+    { id: "ctf", name: "CTF", desc: "Steal the enemy flag and return it to base.", note: "8-16 players" },
   ];
 
   const [phase, setPhase] = useState<"select" | "quiz" | "results">("select");
