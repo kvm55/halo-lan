@@ -83,6 +83,7 @@ export interface HaloMap {
   description: string | null;
   map_size: string | null;
   elo_score: number;
+  best_gametypes: string[] | null;
 }
 
 export interface MapVote {
