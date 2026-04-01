@@ -1594,8 +1594,7 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
   const [currentIdx, setCurrentIdx] = useState(0);
   const [mode, setMode] = useState<"swipe" | "results">("swipe");
   const [gameFilter, setGameFilter] = useState("all");
-  const [touchStart, setTouchStart] = useState<number | null>(null);
-  const [swipeDir, setSwipeDir] = useState<"left" | "right" | null>(null);
+  const [localVoted, setLocalVoted] = useState<Set<string>>(new Set());
 
   // Dedupe maps to unique map_name + game combos (ignore variant dupes for voting)
   const uniqueMaps = maps.filter((m, i, arr) =>
@@ -1603,9 +1602,9 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
     : m.game === gameFilter && arr.findIndex(x => x.map_name === m.map_name && x.game === m.game && (gameFilter === "all" || x.game === gameFilter)) === i
   );
 
-  const votedMapIds = new Set(voting.votes.map(v => v.map_id));
+  const votedMapIds = new Set([...voting.votes.map(v => v.map_id), ...localVoted]);
   const unvoted = uniqueMaps.filter(m => !votedMapIds.has(m.id));
-  const currentMap = unvoted[currentIdx] || null;
+  const currentMap = unvoted[0] || null;
   const progress = uniqueMaps.length - unvoted.length;
 
   const variantColors: Record<string, string> = {
@@ -1619,38 +1618,9 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
 
   const vote = (rank: number) => {
     if (!currentMap) return;
+    setLocalVoted(prev => new Set([...prev, currentMap.id]));
     voting.castVote(currentMap.id, rank);
-    setSwipeDir(rank <= 2 ? "right" : "left");
-    setTimeout(() => {
-      setSwipeDir(null);
-      // Don't increment index since the voted map will be removed from unvoted
-    }, 200);
   };
-
-  // Touch swipe handlers
-  const handleTouchStart = (e: React.TouchEvent) => setTouchStart(e.touches[0].clientX);
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStart === null) return;
-    const diff = e.changedTouches[0].clientX - touchStart;
-    if (Math.abs(diff) > 80) {
-      if (diff > 0) vote(1); // swipe right = YES (rank 1)
-      else vote(4); // swipe left = SKIP (rank 4)
-    }
-    setTouchStart(null);
-  };
-
-  // Keyboard
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (mode !== "swipe") return;
-      if (e.key === "ArrowRight") vote(1);
-      if (e.key === "ArrowLeft") vote(4);
-      if (e.key === "ArrowUp") vote(1);
-      if (e.key === "ArrowDown") vote(5);
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  });
 
   // Sort results by tally
   const results = [...uniqueMaps].sort((a, b) => (voting.tally[b.id] || 0) - (voting.tally[a.id] || 0));
@@ -1699,11 +1669,7 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
           </div>
 
           {currentMap ? (
-            <div
-              className={`kpi-card rounded overflow-hidden transition-all duration-200 ${swipeDir === "right" ? "translate-x-4 opacity-50" : swipeDir === "left" ? "-translate-x-4 opacity-50" : ""}`}
-              onTouchStart={handleTouchStart}
-              onTouchEnd={handleTouchEnd}
-            >
+            <div className="kpi-card rounded overflow-hidden">
               {/* Map image */}
               {currentMap.image_url && (
                 <div className="w-full h-48 bg-cover bg-center relative" style={{ backgroundImage: `url(${currentMap.image_url})` }}>
@@ -1737,7 +1703,7 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
                     PLAY
                   </button>
                 </div>
-                <p className="text-center text-green-900 text-[10px] mt-2">swipe right = play, left = skip</p>
+                <p className="text-center text-green-900 text-[10px] mt-2">Would you play this map on Friday?</p>
               </div>
             </div>
           ) : (
