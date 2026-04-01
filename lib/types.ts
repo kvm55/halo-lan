@@ -80,6 +80,9 @@ export interface HaloMap {
   game_mode: string;
   variant: string;
   image_url: string | null;
+  description: string | null;
+  map_size: string | null;
+  elo_score: number;
 }
 
 export interface MapVote {

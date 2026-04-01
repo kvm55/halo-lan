@@ -1594,15 +1594,21 @@ function PlayerCard({ player: p, ranksRevealed }: { player: Player; ranksReveale
 }
 
 function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: ReturnType<typeof useMapVoting>; playerId: string | null }) {
-  const [currentIdx, setCurrentIdx] = useState(0);
-  const [mode, setMode] = useState<"swipe" | "results">("swipe");
+  const [mode, setMode] = useState<"vote" | "results">("vote");
   const [gameFilter, setGameFilter] = useState("all");
+  const [modeFilter, setModeFilter] = useState("all");
   const [localVoted, setLocalVoted] = useState<Set<string>>(new Set());
 
-  // Dedupe maps to unique map_name + game combos (ignore variant dupes for voting)
-  const uniqueMaps = maps.filter((m, i, arr) =>
-    gameFilter === "all" ? arr.findIndex(x => x.map_name === m.map_name && x.game === m.game) === i
-    : m.game === gameFilter && arr.findIndex(x => x.map_name === m.map_name && x.game === m.game && (gameFilter === "all" || x.game === gameFilter)) === i
+  // Filter maps
+  const filtered = maps.filter(m => {
+    if (gameFilter !== "all" && m.game !== gameFilter) return false;
+    if (modeFilter !== "all" && m.game_mode.toLowerCase() !== modeFilter) return false;
+    return true;
+  });
+
+  // Dedupe to unique map_name + game combos
+  const uniqueMaps = filtered.filter((m, i, arr) =>
+    arr.findIndex(x => x.map_name === m.map_name && x.game === m.game) === i
   );
 
   const votedMapIds = new Set([...voting.votes.map(v => v.map_id), ...localVoted]);
@@ -1610,25 +1616,90 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
   const currentMap = unvoted[0] || null;
   const progress = uniqueMaps.length - unvoted.length;
 
-  const variantColors: Record<string, string> = {
-    standard: "border-green-700 text-green-500",
-    swat: "border-red-700 text-red-400",
-    zombies: "border-purple-700 text-purple-400",
-    fiesta: "border-yellow-700 text-yellow-400",
-    shotty_snipers: "border-blue-700 text-blue-400",
-    rockets: "border-orange-700 text-orange-400",
+  const playerCountLabel = (size: string | null) => {
+    if (size === "small") return "2-8 PLAYERS";
+    if (size === "medium") return "4-12 PLAYERS";
+    if (size === "large") return "8-16 PLAYERS";
+    return null;
   };
 
-  const vote = (rank: number) => {
-    if (!currentMap) return;
-    setLocalVoted(prev => new Set([...prev, currentMap.id]));
-    voting.castVote(currentMap.id, rank);
+  // A/B matchup: pick two random unmatched maps
+  const [matchup, setMatchup] = useState<[HaloMap, HaloMap] | null>(null);
+  const [matchupCount, setMatchupCount] = useState(0);
+  const QUIZ_SIZE = 15;
+
+  useEffect(() => {
+    if (mode === "vote" && !matchup && uniqueMaps.length >= 2 && matchupCount < QUIZ_SIZE) {
+      pickNewMatchup();
+    }
+  }, [mode, uniqueMaps.length]);
+
+  function pickNewMatchup() {
+    if (uniqueMaps.length < 2) return;
+    const shuffled = [...uniqueMaps].sort(() => Math.random() - 0.5);
+    setMatchup([shuffled[0], shuffled[1]]);
+  }
+
+  const pickWinner = async (winner: HaloMap, loser: HaloMap) => {
+    if (!playerId) return;
+    // Save to DB
+    await supabase.from("halo_map_matchups").insert({
+      voter_id: playerId,
+      winner_id: winner.id,
+      loser_id: loser.id,
+    });
+    // Cast as rank vote too (winner gets rank 1, loser gets rank 5)
+    voting.castVote(winner.id, 1);
+    setLocalVoted(prev => new Set([...prev, winner.id]));
+    setMatchupCount(c => c + 1);
+    if (matchupCount + 1 >= QUIZ_SIZE) {
+      setMatchup(null);
+    } else {
+      pickNewMatchup();
+    }
   };
 
   // Sort results by tally
   const results = [...uniqueMaps].sort((a, b) => (voting.tally[b.id] || 0) - (voting.tally[a.id] || 0));
-
   const gameNames = [...new Set(maps.map(m => m.game))].sort();
+  const gameModes = [...new Set(maps.map(m => m.game_mode))].sort();
+
+  function MapCard({ map, onClick, label }: { map: HaloMap; onClick: () => void; label?: string }) {
+    const score = voting.tally[map.id] || 0;
+    return (
+      <button onClick={onClick} className="kpi-card rounded-lg overflow-hidden text-left w-full hover:border-green-400 transition-all border border-green-900/30">
+        {map.image_url ? (
+          <div className="w-full h-32 bg-cover bg-center relative" style={{ backgroundImage: `url(${map.image_url})` }}>
+            <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
+            <div className="absolute bottom-2 left-3 right-3">
+              <h3 className="text-lg font-bold text-white hud-glow">{map.map_name}</h3>
+              <p className="text-green-400 text-[10px]">{map.game}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="w-full h-20 bg-green-950/30 flex items-center justify-center relative">
+            <h3 className="text-lg font-bold text-green-300">{map.map_name}</h3>
+            <span className="absolute bottom-1 left-3 text-green-700 text-[10px]">{map.game}</span>
+          </div>
+        )}
+        <div className="p-3">
+          {map.description && (
+            <p className="text-green-600 text-xs leading-relaxed mb-2">{map.description}</p>
+          )}
+          <div className="flex gap-1.5 flex-wrap">
+            <span className="text-[10px] px-1.5 py-0.5 border border-green-700 text-green-500 rounded">{map.game_mode}</span>
+            {map.map_size && (
+              <span className="text-[10px] px-1.5 py-0.5 border border-amber-900/50 text-amber-500 rounded">{playerCountLabel(map.map_size)}</span>
+            )}
+            {score > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 border border-green-900/30 text-green-600 rounded">{score}pts</span>
+            )}
+          </div>
+          {label && <p className="text-center text-green-500 text-xs mt-2 font-bold tracking-widest">{label}</p>}
+        </div>
+      </button>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -1636,8 +1707,8 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
       <div className="flex items-center justify-between">
         <h2 className="text-xs tracking-[0.3em] text-green-600 uppercase">// MAP VOTE</h2>
         <div className="flex gap-1">
-          <button onClick={() => setMode("swipe")}
-            className={`px-3 py-1 border text-xs ${mode === "swipe" ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
+          <button onClick={() => setMode("vote")}
+            className={`px-3 py-1 border text-xs ${mode === "vote" ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
             VOTE
           </button>
           <button onClick={() => setMode("results")}
@@ -1648,75 +1719,54 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
       </div>
 
       {/* Game filter */}
-      <div className="flex gap-1 overflow-x-auto">
-        <button onClick={() => { setGameFilter("all"); setCurrentIdx(0); }}
+      <div className="flex gap-1 overflow-x-auto pb-1">
+        <button onClick={() => setGameFilter("all")}
           className={`px-3 py-1 border text-xs whitespace-nowrap ${gameFilter === "all" ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
           ALL
         </button>
         {gameNames.map(g => (
-          <button key={g} onClick={() => { setGameFilter(g); setCurrentIdx(0); }}
+          <button key={g} onClick={() => setGameFilter(g)}
             className={`px-3 py-1 border text-xs whitespace-nowrap ${gameFilter === g ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
             {g.replace("Halo ", "H").toUpperCase()}
           </button>
         ))}
       </div>
 
-      {mode === "swipe" && (
+      {mode === "vote" && (
         <>
           {/* Progress */}
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1 bg-green-900/30 rounded overflow-hidden">
-              <div className="h-full bg-green-400 transition-all" style={{ width: `${(progress / Math.max(uniqueMaps.length, 1)) * 100}%` }} />
+              <div className="h-full bg-green-400 transition-all" style={{ width: `${(matchupCount / QUIZ_SIZE) * 100}%` }} />
             </div>
-            <span className="text-green-700 text-xs">{progress}/{uniqueMaps.length}</span>
+            <span className="text-green-700 text-xs">{matchupCount}/{QUIZ_SIZE}</span>
           </div>
 
-          {currentMap ? (
-            <div className="kpi-card rounded overflow-hidden">
-              {/* Map image */}
-              {currentMap.image_url && (
-                <div className="w-full h-48 bg-cover bg-center relative" style={{ backgroundImage: `url(${currentMap.image_url})` }}>
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
-                </div>
-              )}
-
-              {/* Map info */}
-              <div className="p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-xl font-bold text-green-300 hud-glow">{currentMap.map_name}</h3>
-                  <span className="text-green-700 text-xs">{currentMap.game}</span>
-                </div>
-                <div className="flex gap-2 mb-4">
-                  <span className={`text-xs px-2 py-0.5 border rounded ${variantColors[currentMap.variant] || variantColors.standard}`}>
-                    {currentMap.game_mode}
-                  </span>
-                  {(voting.tally[currentMap.id] || 0) > 0 && (
-                    <span className="text-xs text-green-600">{voting.tally[currentMap.id]}pts</span>
-                  )}
-                </div>
-
-                {/* Vote buttons */}
-                <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => vote(5)}
-                    className="py-4 border-2 border-red-800 text-red-400 text-lg tracking-widest rounded hover:bg-red-900/20 transition-all">
-                    SKIP
-                  </button>
-                  <button onClick={() => vote(1)}
-                    className="py-4 border-2 border-green-500 text-green-400 text-lg tracking-widest rounded hover:bg-green-900/20 transition-all">
-                    PLAY
-                  </button>
-                </div>
-                <p className="text-center text-green-900 text-[10px] mt-2">Would you play this map on Friday?</p>
+          {matchup && matchupCount < QUIZ_SIZE ? (
+            <div>
+              <p className="text-center text-green-600 text-sm mb-3">Which would you rather play?</p>
+              <div className="grid grid-cols-2 gap-3">
+                <MapCard map={matchup[0]} onClick={() => pickWinner(matchup[0], matchup[1])} label="PICK" />
+                <MapCard map={matchup[1]} onClick={() => pickWinner(matchup[1], matchup[0])} label="PICK" />
               </div>
+              <button onClick={() => pickNewMatchup()} className="w-full mt-3 py-2 border border-green-900/30 text-green-800 text-xs tracking-widest hover:text-green-500">
+                SKIP BOTH
+              </button>
             </div>
           ) : (
             <div className="kpi-card p-8 rounded text-center">
-              <div className="text-2xl hud-glow text-green-300 mb-2">VOTING COMPLETE</div>
-              <p className="text-green-700">You&apos;ve voted on all {gameFilter === "all" ? "" : gameFilter + " "}maps. Check results.</p>
-              <button onClick={() => setMode("results")}
-                className="mt-4 px-6 py-2 border border-green-500 text-green-400 text-sm tracking-widest">
-                VIEW RESULTS
-              </button>
+              <div className="text-2xl hud-glow text-green-300 mb-2">ROUND COMPLETE</div>
+              <p className="text-green-700 mb-4">{matchupCount} matchups voted. Run another round to refine rankings.</p>
+              <div className="flex gap-3 justify-center">
+                <button onClick={() => { setMatchupCount(0); pickNewMatchup(); }}
+                  className="px-6 py-2 border border-green-500 text-green-400 text-sm tracking-widest">
+                  ANOTHER ROUND
+                </button>
+                <button onClick={() => setMode("results")}
+                  className="px-6 py-2 border border-amber-500 text-amber-400 text-sm tracking-widest">
+                  VIEW RESULTS
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -1729,29 +1779,30 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
             const voterCount = voting.allVotes.filter(v => v.map_id === map.id).length;
             if (score === 0 && voterCount === 0) return null;
             return (
-              <div key={map.id} className="kpi-card p-3 rounded flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className={`text-lg font-bold w-6 text-center ${i < 3 ? "text-amber-400" : "text-green-700"}`}>
-                    {i + 1}
-                  </span>
-                  {map.image_url && (
-                    <img src={map.image_url} alt={map.map_name} className="w-10 h-10 rounded object-cover" />
-                  )}
-                  <div>
+              <div key={map.id} className="kpi-card p-2 rounded flex items-center gap-3">
+                <span className={`text-lg font-bold w-6 text-center ${i < 3 ? "text-amber-400" : i < 10 ? "text-green-500" : "text-green-800"}`}>
+                  {i + 1}
+                </span>
+                {map.image_url && (
+                  <img src={map.image_url} alt={map.map_name} className="w-10 h-10 rounded object-cover" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
                     <span className="text-green-300 text-sm font-bold">{map.map_name}</span>
-                    <div className="flex gap-1 mt-0.5">
-                      <span className="text-green-800 text-[10px]">{map.game}</span>
-                      <span className={`text-[10px] px-1 border rounded ${variantColors[map.variant] || variantColors.standard}`}>{map.game_mode}</span>
-                    </div>
+                    <span className="text-green-800 text-[10px]">{map.game}</span>
                   </div>
+                  {map.description && <p className="text-green-700 text-[10px] truncate">{map.description}</p>}
                 </div>
-                <div className="text-right">
-                  <div className="text-green-300 font-bold">{score}pts</div>
+                <div className="text-right shrink-0">
+                  <div className="text-green-300 font-bold text-sm">{score}pts</div>
                   <div className="text-green-800 text-[10px]">{voterCount} votes</div>
                 </div>
               </div>
             );
           })}
+          {results.filter(m => (voting.tally[m.id] || 0) > 0).length === 0 && (
+            <p className="text-green-800 text-center py-8">No votes yet. Switch to VOTE tab to start.</p>
+          )}
         </div>
       )}
     </div>
