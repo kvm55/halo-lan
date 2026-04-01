@@ -1777,7 +1777,7 @@ function GameTypeVoting({ playerId }: { playerId: string | null }) {
 }
 
 function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: ReturnType<typeof useMapVoting>; playerId: string | null }) {
-  const [mode, setMode] = useState<"vote" | "gametypes" | "results">("vote");
+  const [mode, setMode] = useState<"vote" | "gametypes" | "veto" | "results">("vote");
   const [gameFilter, setGameFilter] = useState("all");
   const [sizeFilter, setSizeFilter] = useState<string>("all");
   const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
@@ -1908,6 +1908,10 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
             className={`px-3 py-1 border text-xs ${mode === "gametypes" ? "border-amber-400 text-amber-300" : "border-green-900/30 text-green-800"}`}>
             MODES
           </button>
+          <button onClick={() => setMode("veto")}
+            className={`px-3 py-1 border text-xs ${mode === "veto" ? "border-red-400 text-red-300" : "border-green-900/30 text-green-800"}`}>
+            VETO
+          </button>
           <button onClick={() => setMode("results")}
             className={`px-3 py-1 border text-xs ${mode === "results" ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
             RESULTS
@@ -2027,8 +2031,151 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
         <GameTypeVoting playerId={playerId} />
       )}
 
+      {/* ---- VETO ---- */}
+      {mode === "veto" && (
+        <VetoSection maps={uniqueMaps} playerId={playerId} />
+      )}
+
       {mode === "results" && (
         <CombinedResults maps={results} voting={voting} />
+      )}
+    </div>
+  );
+}
+
+function VetoSection({ maps, playerId }: { maps: HaloMap[]; playerId: string | null }) {
+  const [vetoes, setVetoes] = useState<{ target_type: string; target_id: string; target_name: string; count: number }[]>([]);
+  const [myVetoes, setMyVetoes] = useState<Set<string>>(new Set());
+  const [vetoTab, setVetoTab] = useState<"maps" | "gametypes">("maps");
+
+  const GAMETYPES = [
+    "Slayer", "CTF", "SWAT", "Infection", "Shotty Snipers", "Fiesta",
+    "Oddball", "King of the Hill", "Rockets", "Swords", "Team BRs", "Assault",
+    "Juggernaut", "Territories", "Snipers", "Grifball",
+  ];
+
+  useEffect(() => {
+    // Load all vetoes aggregated
+    supabase.from("halo_vetoes").select("target_type, target_id, target_name").then(({ data }) => {
+      if (data) {
+        const counts: Record<string, { target_type: string; target_id: string; target_name: string; count: number }> = {};
+        data.forEach((v: { target_type: string; target_id: string; target_name: string }) => {
+          const key = `${v.target_type}:${v.target_id}`;
+          if (!counts[key]) counts[key] = { ...v, count: 0 };
+          counts[key].count++;
+        });
+        setVetoes(Object.values(counts).sort((a, b) => b.count - a.count));
+      }
+    });
+    // Load my vetoes
+    if (playerId) {
+      supabase.from("halo_vetoes").select("target_type, target_id").eq("player_id", playerId).then(({ data }) => {
+        if (data) {
+          setMyVetoes(new Set(data.map((v: { target_type: string; target_id: string }) => `${v.target_type}:${v.target_id}`)));
+        }
+      });
+    }
+  }, [playerId]);
+
+  const toggleVeto = async (type: string, id: string, name: string) => {
+    if (!playerId) return;
+    const key = `${type}:${id}`;
+    if (myVetoes.has(key)) {
+      await supabase.from("halo_vetoes").delete().eq("player_id", playerId).eq("target_type", type).eq("target_id", id);
+      setMyVetoes(prev => { const n = new Set(prev); n.delete(key); return n; });
+      setVetoes(prev => prev.map(v => v.target_type === type && v.target_id === id ? { ...v, count: v.count - 1 } : v).filter(v => v.count > 0));
+    } else {
+      await supabase.from("halo_vetoes").insert({ player_id: playerId, target_type: type, target_id: id, target_name: name });
+      setMyVetoes(prev => new Set([...prev, key]));
+      setVetoes(prev => {
+        const existing = prev.find(v => v.target_type === type && v.target_id === id);
+        if (existing) return prev.map(v => v.target_type === type && v.target_id === id ? { ...v, count: v.count + 1 } : v).sort((a, b) => b.count - a.count);
+        return [...prev, { target_type: type, target_id: id, target_name: name, count: 1 }].sort((a, b) => b.count - a.count);
+      });
+    }
+  };
+
+  const getVetoCount = (type: string, id: string) => vetoes.find(v => v.target_type === type && v.target_id === id)?.count || 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="kpi-card p-3 rounded border-red-900/20">
+        <p className="text-red-400 text-xs text-center font-bold tracking-wider">VETO SYSTEM</p>
+        <p className="text-green-700 text-[10px] text-center mt-1">Tap to nominate a veto. 3 votes = vetoed from the playlist.</p>
+      </div>
+
+      <div className="flex gap-1 justify-center">
+        <button onClick={() => setVetoTab("maps")}
+          className={`px-4 py-1.5 border text-xs ${vetoTab === "maps" ? "border-red-400 text-red-300" : "border-green-900/30 text-green-800"}`}>
+          MAPS
+        </button>
+        <button onClick={() => setVetoTab("gametypes")}
+          className={`px-4 py-1.5 border text-xs ${vetoTab === "gametypes" ? "border-red-400 text-red-300" : "border-green-900/30 text-green-800"}`}>
+          GAME TYPES
+        </button>
+      </div>
+
+      {/* Active vetoes */}
+      {vetoes.filter(v => v.count >= 3).length > 0 && (
+        <div className="kpi-card p-3 rounded border-red-500/30">
+          <p className="text-red-400 text-xs font-bold tracking-wider mb-2">VETOED (3+ VOTES)</p>
+          {vetoes.filter(v => v.count >= 3).map(v => (
+            <div key={`${v.target_type}:${v.target_id}`} className="flex items-center justify-between py-1 text-sm">
+              <span className="text-red-300 line-through">{v.target_name}</span>
+              <span className="text-red-500 text-xs">{v.count} vetoes</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {vetoTab === "maps" && (
+        <div className="space-y-1">
+          {maps.map(map => {
+            const key = `map:${map.id}`;
+            const myVeto = myVetoes.has(key);
+            const count = getVetoCount("map", map.id);
+            const vetoed = count >= 3;
+            return (
+              <button key={map.id} onClick={() => toggleVeto("map", map.id, `${map.map_name} (${map.game})`)}
+                className={`w-full kpi-card p-2 rounded flex items-center gap-2 text-left transition-all ${vetoed ? "opacity-40 border-red-900/30" : myVeto ? "border-red-500/30" : ""}`}>
+                {map.image_url && <img src={map.image_url} alt={map.map_name} className="w-8 h-8 rounded object-cover shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <span className={`text-sm ${vetoed ? "text-red-400 line-through" : "text-green-300"}`}>{map.map_name}</span>
+                  <span className="text-green-800 text-[10px] ml-1">{map.game}</span>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  {count > 0 && <span className={`text-xs ${count >= 3 ? "text-red-400" : count >= 2 ? "text-amber-400" : "text-green-700"}`}>{count}/3</span>}
+                  <span className={`text-xs px-1.5 py-0.5 border rounded ${myVeto ? "border-red-500 text-red-400 bg-red-500/10" : "border-green-900/20 text-green-800"}`}>
+                    {myVeto ? "VETOED" : "VETO"}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {vetoTab === "gametypes" && (
+        <div className="space-y-1">
+          {GAMETYPES.map(gt => {
+            const key = `gametype:${gt.toLowerCase()}`;
+            const myVeto = myVetoes.has(key);
+            const count = getVetoCount("gametype", gt.toLowerCase());
+            const vetoed = count >= 3;
+            return (
+              <button key={gt} onClick={() => toggleVeto("gametype", gt.toLowerCase(), gt)}
+                className={`w-full kpi-card p-3 rounded flex items-center justify-between text-left transition-all ${vetoed ? "opacity-40 border-red-900/30" : myVeto ? "border-red-500/30" : ""}`}>
+                <span className={`text-sm ${vetoed ? "text-red-400 line-through" : "text-amber-300"}`}>{gt}</span>
+                <div className="flex items-center gap-1">
+                  {count > 0 && <span className={`text-xs ${count >= 3 ? "text-red-400" : count >= 2 ? "text-amber-400" : "text-green-700"}`}>{count}/3</span>}
+                  <span className={`text-xs px-1.5 py-0.5 border rounded ${myVeto ? "border-red-500 text-red-400 bg-red-500/10" : "border-green-900/20 text-green-800"}`}>
+                    {myVeto ? "VETOED" : "VETO"}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );
