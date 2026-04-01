@@ -2089,9 +2089,20 @@ function VetoSection({ maps, playerId }: { maps: HaloMap[]; playerId: string | n
     }
   }, [playerId]);
 
+  const MAP_VETO_LIMIT = 3;
+  const GAMETYPE_VETO_LIMIT = 2;
+
+  const myMapVetoes = [...myVetoes].filter(k => k.startsWith("map:")).length;
+  const myGametypeVetoes = [...myVetoes].filter(k => k.startsWith("gametype:")).length;
+
   const toggleVeto = async (type: string, id: string, name: string) => {
     if (!playerId) return;
     const key = `${type}:${id}`;
+    // Check limits (removing is always allowed)
+    if (!myVetoes.has(key)) {
+      if (type === "map" && myMapVetoes >= MAP_VETO_LIMIT) return;
+      if (type === "gametype" && myGametypeVetoes >= GAMETYPE_VETO_LIMIT) return;
+    }
     if (myVetoes.has(key)) {
       await supabase.from("halo_vetoes").delete().eq("player_id", playerId).eq("target_type", type).eq("target_id", id);
       setMyVetoes(prev => { const n = new Set(prev); n.delete(key); return n; });
@@ -2113,7 +2124,15 @@ function VetoSection({ maps, playerId }: { maps: HaloMap[]; playerId: string | n
     <div className="space-y-4">
       <div className="kpi-card p-3 rounded border-red-900/20">
         <p className="text-red-400 text-xs text-center font-bold tracking-wider">VETO SYSTEM</p>
-        <p className="text-green-700 text-[10px] text-center mt-1">Tap to nominate a veto. 3 votes = vetoed from the playlist.</p>
+        <p className="text-green-700 text-[10px] text-center mt-1">Tap to nominate. 3 votes from different players = vetoed.</p>
+        <div className="flex justify-center gap-4 mt-2">
+          <span className={`text-[10px] ${myMapVetoes >= MAP_VETO_LIMIT ? "text-red-400" : "text-green-600"}`}>
+            Maps: {myMapVetoes}/{MAP_VETO_LIMIT} used
+          </span>
+          <span className={`text-[10px] ${myGametypeVetoes >= GAMETYPE_VETO_LIMIT ? "text-red-400" : "text-green-600"}`}>
+            Modes: {myGametypeVetoes}/{GAMETYPE_VETO_LIMIT} used
+          </span>
+        </div>
       </div>
 
       <div className="flex gap-1 justify-center">
