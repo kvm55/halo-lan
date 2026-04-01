@@ -1879,7 +1879,7 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
           )}
           <div className="flex gap-1.5 flex-wrap">
             {map.best_gametypes && map.best_gametypes.length > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 border border-green-700 text-green-500 rounded">{map.best_gametypes.slice(0, 2).join(" / ")}</span>
+              <span className="text-[10px] px-1.5 py-0.5 border border-green-700 text-green-500 rounded">Best for: {map.best_gametypes.slice(0, 2).join(", ")}</span>
             )}
             {map.map_size && (
               <span className="text-[10px] px-1.5 py-0.5 border border-amber-900/50 text-amber-500 rounded">{playerCountLabel(map.map_size)}</span>
