@@ -2089,8 +2089,8 @@ function VetoSection({ maps, playerId }: { maps: HaloMap[]; playerId: string | n
     }
   }, [playerId]);
 
-  const MAP_VETO_LIMIT = 3;
-  const GAMETYPE_VETO_LIMIT = 2;
+  const MAP_VETO_LIMIT = 5;
+  const GAMETYPE_VETO_LIMIT = 3;
 
   const myMapVetoes = [...myVetoes].filter(k => k.startsWith("map:")).length;
   const myGametypeVetoes = [...myVetoes].filter(k => k.startsWith("gametype:")).length;
