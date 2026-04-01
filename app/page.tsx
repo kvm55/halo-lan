@@ -1784,15 +1784,16 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
   const [localVoted, setLocalVoted] = useState<Set<string>>(new Set());
   const allModesSelected = selectedModes.size === 0; // empty = all
 
-  // Filter maps
-  const filtered = maps.filter(m => {
+  // For map voting: filter by game + size only (pure arena comparison, no game mode)
+  // For results: same
+  const standardMaps = maps.filter(m => m.variant === "standard" || maps.filter(x => x.map_name === m.map_name && x.variant === "standard").length === 0);
+  const filtered = standardMaps.filter(m => {
     if (gameFilter !== "all" && m.game !== gameFilter) return false;
     if (sizeFilter !== "all" && m.map_size !== sizeFilter) return false;
-    if (!allModesSelected && !selectedModes.has(m.game_mode.toLowerCase())) return false;
     return true;
   });
 
-  // Dedupe to unique map_name + game combos
+  // Dedupe to one entry per map name + game
   const uniqueMaps = filtered.filter((m, i, arr) =>
     arr.findIndex(x => x.map_name === m.map_name && x.game === m.game) === i
   );
@@ -1824,12 +1825,9 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
     if (uniqueMaps.length < 2) return;
     const shuffled = [...uniqueMaps].sort(() => Math.random() - 0.5);
     const first = shuffled[0];
-    // Best: same size + same game mode
-    const bestMatch = shuffled.slice(1).find(m => m.map_size === first.map_size && m.game_mode === first.game_mode && m.id !== first.id);
-    // Good: same size, any mode
-    const goodMatch = shuffled.slice(1).find(m => m.map_size === first.map_size && m.id !== first.id);
-    // Fallback: any two
-    const match = bestMatch || goodMatch || shuffled[1];
+    // Match same size category for fair comparison
+    const sameSize = shuffled.slice(1).find(m => m.map_size === first.map_size && m.id !== first.id);
+    const match = sameSize || shuffled[1];
     setMatchup([first, match]);
   }
 
@@ -1880,7 +1878,9 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
             <p className="text-green-600 text-xs leading-relaxed mb-2">{map.description}</p>
           )}
           <div className="flex gap-1.5 flex-wrap">
-            <span className="text-[10px] px-1.5 py-0.5 border border-green-700 text-green-500 rounded">{map.game_mode}</span>
+            {map.best_gametypes && map.best_gametypes.length > 0 && (
+              <span className="text-[10px] px-1.5 py-0.5 border border-green-700 text-green-500 rounded">{map.best_gametypes.slice(0, 2).join(" / ")}</span>
+            )}
             {map.map_size && (
               <span className="text-[10px] px-1.5 py-0.5 border border-amber-900/50 text-amber-500 rounded">{playerCountLabel(map.map_size)}</span>
             )}
@@ -1905,7 +1905,7 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
         <div className="flex gap-1">
           <button onClick={() => setMode("vote")}
             className={`px-3 py-1 border text-xs ${mode === "vote" ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
-            MAPS
+            ARENAS
           </button>
           <button onClick={() => setMode("gametypes")}
             className={`px-3 py-1 border text-xs ${mode === "gametypes" ? "border-amber-400 text-amber-300" : "border-green-900/30 text-green-800"}`}>
@@ -1946,7 +1946,7 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
           </button>
         ))}
       </div>
-      <div className="flex gap-1 overflow-x-auto pb-1">
+      {mode !== "vote" && <div className="flex gap-1 overflow-x-auto pb-1">
         <button onClick={() => { setSelectedModes(new Set()); setMatchup(null); setMatchupCount(0); }}
           className={`px-2 py-1.5 border-2 text-[10px] whitespace-nowrap rounded font-bold ${allModesSelected ? "border-amber-400 text-amber-300 bg-amber-400/15" : "border-green-900/20 text-green-800"}`}>
           ALL TYPES
@@ -1968,10 +1968,10 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
             </button>
           );
         })}
-      </div>
+      </div>}
 
       {/* Active filter summary */}
-      {!allModesSelected && selectedModes.size > 0 && (
+      {mode !== "vote" && !allModesSelected && selectedModes.size > 0 && (
         <div className="kpi-card p-2 rounded border-amber-500/20 text-center">
           <span className="text-amber-400 text-xs font-bold tracking-wider">
             FILTERING: {[...selectedModes].map(m => m.toUpperCase()).join(" + ")}
@@ -1992,7 +1992,7 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
 
           {matchup && matchupCount < QUIZ_SIZE ? (
             <div>
-              <p className="text-center text-green-500 text-sm mb-1">Which would you rather play?</p>
+              <p className="text-center text-green-500 text-sm mb-1">Which arena do you prefer?</p>
               {matchup[0].map_size && (
                 <p className="text-center text-green-800 text-[10px] mb-3">
                   {matchup[0].map_size === "small" ? "Small map (2v2 / 4v4)" : matchup[0].map_size === "medium" ? "Medium map (4v4 / 8v8)" : "Big Team Battle (8v8+)"} matchup
