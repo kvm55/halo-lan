@@ -1600,7 +1600,8 @@ function PlayerCard({ player: p, ranksRevealed }: { player: Player; ranksReveale
   );
 }
 
-function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: ReturnType<typeof useMapVoting>; playerId: string | null }) {
+// MapVotingSwipe kept for reference but not used - replaced by WIP screen
+function _MapVotingSwipeOld({ maps, voting, playerId }: { maps: HaloMap[]; voting: ReturnType<typeof useMapVoting>; playerId: string | null }) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [mode, setMode] = useState<"swipe" | "results">("swipe");
   const [gameFilter, setGameFilter] = useState("all");
