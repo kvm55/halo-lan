@@ -1878,19 +1878,16 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
             <p className="text-green-600 text-xs leading-relaxed mb-2">{map.description}</p>
           )}
           <div className="flex gap-1.5 flex-wrap">
-            {map.best_gametypes && map.best_gametypes.length > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 border border-green-700 text-green-500 rounded">Best for: {map.best_gametypes.slice(0, 2).join(", ")}</span>
-            )}
             {map.map_size && (
               <span className="text-[10px] px-1.5 py-0.5 border border-amber-900/50 text-amber-500 rounded">{playerCountLabel(map.map_size)}</span>
-            )}
-            {map.best_gametypes && map.best_gametypes.length > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 border border-blue-900/50 text-blue-400 rounded">{map.best_gametypes.slice(0, 2).join(" / ")}</span>
             )}
             {score > 0 && (
               <span className="text-[10px] px-1.5 py-0.5 border border-green-900/30 text-green-600 rounded">{score}pts</span>
             )}
           </div>
+          {map.best_gametypes && map.best_gametypes.length > 0 && (
+            <p className="text-green-700 text-[10px] mt-1">Best for: {map.best_gametypes.join(", ")}</p>
+          )}
           {label && <p className="text-center text-green-500 text-xs mt-2 font-bold tracking-widest">{label}</p>}
         </div>
       </button>
