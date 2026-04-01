@@ -790,6 +790,9 @@ function MainApp({ screen, setScreen, setNeedsProfile, session, players, draft, 
         {/* Games v2 code saved in git history */}
       </main>
 
+      {/* Cortana Helper */}
+      <CortanaHelper screen={screen} playerCount={players.filter(p => p.profile_confirmed).length} />
+
       <footer className="border-t border-green-900/30 px-4 py-4 mt-8">
         <div className="max-w-6xl mx-auto flex justify-between text-xs text-green-800">
           <span>UNSC // OPERATION BIRTHDAY AMBUSH</span>
@@ -1883,6 +1886,73 @@ function EquipmentManifest({ players }: { players: Player[] }) {
         <p className="text-green-800 text-sm text-center py-4">No equipment logged yet. Add yours above.</p>
       )}
     </>
+  );
+}
+
+function CortanaHelper({ screen, playerCount }: { screen: AppScreen; playerCount: number }) {
+  const [dismissed, setDismissed] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+
+  // Reset when screen changes
+  useEffect(() => { setDismissed(false); setMinimized(false); }, [screen]);
+
+  const tips: Record<string, { text: string; action?: string }> = {
+    lobby: playerCount < 5
+      ? { text: `${playerCount} Spartan${playerCount === 1 ? "" : "s"} confirmed. Share the link to get more players checked in.`, action: "Copy link" }
+      : playerCount < 12
+      ? { text: `${playerCount} Spartans and counting. Tap any player card to see their combat record or rate their skill.` }
+      : { text: `${playerCount} Spartans confirmed. Looking like a full 8v8. Check the Equipment tab to make sure we have enough controllers.` },
+    equipment: { text: "Add what you're bringing. Tap + XBOX, + CONTROLLER, or + TV. Everyone can see the full manifest below." },
+    draft: { text: "Snake draft is coming. Captains will pick teams based on combat records and peer assessments. Get your ratings in." },
+    voting: { text: "Vote on every map. PLAY if you want it in the rotation, SKIP if not. Results tab shows the current leaderboard." },
+    games: { text: "Game tracker goes live on Friday. Upload post-game screenshots and I'll parse the scores automatically." },
+  };
+
+  const tip = tips[screen];
+  if (!tip || dismissed) return null;
+
+  if (minimized) {
+    return (
+      <button
+        onClick={() => setMinimized(false)}
+        className="fixed bottom-4 right-4 z-40 w-10 h-10 rounded-full bg-blue-900/80 border border-blue-500/30 flex items-center justify-center text-blue-400 text-lg hover:bg-blue-800/80 transition-all"
+      >
+        C
+      </button>
+    );
+  }
+
+  return (
+    <div className="fixed bottom-4 right-4 left-4 md:left-auto md:w-80 z-40">
+      <div className="kpi-card rounded-lg p-3 border-blue-500/20 bg-black/95 backdrop-blur-sm">
+        <div className="flex items-start gap-2">
+          <div className="w-8 h-8 rounded-full bg-blue-900/50 border border-blue-500/30 flex items-center justify-center text-blue-400 text-xs font-bold shrink-0 mt-0.5">
+            C
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-blue-400 text-[10px] tracking-widest font-bold">CORTANA</span>
+              <div className="flex gap-1">
+                <button onClick={() => setMinimized(true)} className="text-green-900 hover:text-green-600 text-xs px-1">_</button>
+                <button onClick={() => setDismissed(true)} className="text-green-900 hover:text-green-600 text-xs px-1">X</button>
+              </div>
+            </div>
+            <p className="text-green-300 text-xs leading-relaxed">{tip.text}</p>
+            {tip.action && screen === "lobby" && (
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText("https://parker-halo-tracker.vercel.app");
+                  setDismissed(true);
+                }}
+                className="mt-2 text-[10px] px-3 py-1 border border-blue-500/30 text-blue-400 rounded hover:bg-blue-500/10"
+              >
+                {tip.action}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
