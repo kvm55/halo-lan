@@ -1596,13 +1596,13 @@ function PlayerCard({ player: p, ranksRevealed }: { player: Player; ranksReveale
 function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: ReturnType<typeof useMapVoting>; playerId: string | null }) {
   const [mode, setMode] = useState<"vote" | "results">("vote");
   const [gameFilter, setGameFilter] = useState("all");
-  const [modeFilter, setModeFilter] = useState("all");
+  const [sizeFilter, setSizeFilter] = useState<string>("all");
   const [localVoted, setLocalVoted] = useState<Set<string>>(new Set());
 
   // Filter maps
   const filtered = maps.filter(m => {
     if (gameFilter !== "all" && m.game !== gameFilter) return false;
-    if (modeFilter !== "all" && m.game_mode.toLowerCase() !== modeFilter) return false;
+    if (sizeFilter !== "all" && m.map_size !== sizeFilter) return false;
     return true;
   });
 
@@ -1637,7 +1637,15 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
   function pickNewMatchup() {
     if (uniqueMaps.length < 2) return;
     const shuffled = [...uniqueMaps].sort(() => Math.random() - 0.5);
-    setMatchup([shuffled[0], shuffled[1]]);
+    // Try to match same size first
+    const first = shuffled[0];
+    const sameSize = shuffled.slice(1).find(m => m.map_size === first.map_size && m.id !== first.id);
+    if (sameSize) {
+      setMatchup([first, sameSize]);
+    } else {
+      // Fallback to any two
+      setMatchup([shuffled[0], shuffled[1]]);
+    }
   }
 
   const pickWinner = async (winner: HaloMap, loser: HaloMap) => {
@@ -1718,15 +1726,30 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
         </div>
       </div>
 
+      {/* Size category filter */}
+      <div className="flex gap-1 overflow-x-auto pb-1">
+        {[
+          { id: "all", label: "ALL MAPS" },
+          { id: "small", label: "2v2 / 4v4" },
+          { id: "medium", label: "4v4 / 8v8" },
+          { id: "large", label: "BTB (8v8+)" },
+        ].map(s => (
+          <button key={s.id} onClick={() => { setSizeFilter(s.id); setMatchup(null); setMatchupCount(0); }}
+            className={`px-3 py-1.5 border text-xs whitespace-nowrap rounded ${sizeFilter === s.id ? "border-green-400 text-green-300 bg-green-400/10" : "border-green-900/30 text-green-800"}`}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
       {/* Game filter */}
       <div className="flex gap-1 overflow-x-auto pb-1">
-        <button onClick={() => setGameFilter("all")}
-          className={`px-3 py-1 border text-xs whitespace-nowrap ${gameFilter === "all" ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
+        <button onClick={() => { setGameFilter("all"); setMatchup(null); setMatchupCount(0); }}
+          className={`px-2 py-1 border text-[10px] whitespace-nowrap ${gameFilter === "all" ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
           ALL
         </button>
         {gameNames.map(g => (
-          <button key={g} onClick={() => setGameFilter(g)}
-            className={`px-3 py-1 border text-xs whitespace-nowrap ${gameFilter === g ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
+          <button key={g} onClick={() => { setGameFilter(g); setMatchup(null); setMatchupCount(0); }}
+            className={`px-2 py-1 border text-[10px] whitespace-nowrap ${gameFilter === g ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
             {g.replace("Halo ", "H").toUpperCase()}
           </button>
         ))}
@@ -1744,7 +1767,12 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
 
           {matchup && matchupCount < QUIZ_SIZE ? (
             <div>
-              <p className="text-center text-green-600 text-sm mb-3">Which would you rather play?</p>
+              <p className="text-center text-green-500 text-sm mb-1">Which would you rather play?</p>
+              {matchup[0].map_size && (
+                <p className="text-center text-green-800 text-[10px] mb-3">
+                  {matchup[0].map_size === "small" ? "Small map (2v2 / 4v4)" : matchup[0].map_size === "medium" ? "Medium map (4v4 / 8v8)" : "Big Team Battle (8v8+)"} matchup
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <MapCard map={matchup[0]} onClick={() => pickWinner(matchup[0], matchup[1])} label="PICK" />
                 <MapCard map={matchup[1]} onClick={() => pickWinner(matchup[1], matchup[0])} label="PICK" />
