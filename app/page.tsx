@@ -1643,18 +1643,18 @@ function GameTypeVoting({ playerId }: { playerId: string | null }) {
   const pick = (winnerId: string) => {
     setVotes(prev => ({ ...prev, [winnerId]: (prev[winnerId] || 0) + 1 }));
     setCount(c => c + 1);
+    const newVotes = { ...votes, [winnerId]: (votes[winnerId] || 0) + 1 };
     if (count + 1 >= ROUNDS) {
       setPhase("results");
-      // Save to DB
+      // Save each game type's win count to DB
       if (playerId) {
-        const ranked = [...activeTypes].sort((a, b) => (votes[b.id] || 0) + (b.id === winnerId ? 1 : 0) - ((votes[a.id] || 0) + (a.id === winnerId ? 1 : 0)));
-        ranked.forEach((t, i) => {
-          supabase.from("halo_map_votes").upsert({
+        activeTypes.forEach(t => {
+          const wins = newVotes[t.id] || 0;
+          supabase.from("halo_gametype_votes").upsert({
             player_id: playerId,
-            map_id: t.id,
-            draft_id: "gametype-vote",
-            rank: i + 1,
-          }, { onConflict: "player_id,map_id,draft_id" }).then(() => {});
+            gametype: t.id,
+            wins,
+          }, { onConflict: "player_id,gametype" }).then(() => {});
         });
       }
     } else {
@@ -1986,8 +1986,55 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
       )}
 
       {mode === "results" && (
+        <CombinedResults maps={results} voting={voting} />
+      )}
+    </div>
+  );
+}
+
+function CombinedResults({ maps, voting }: { maps: HaloMap[]; voting: ReturnType<typeof useMapVoting> }) {
+  const [gametypeScores, setGametypeScores] = useState<Record<string, number>>({});
+  const [resultsTab, setResultsTab] = useState<"maps" | "gametypes">("maps");
+
+  const GT_NAMES: Record<string, string> = {
+    slayer: "Slayer", ctf: "CTF", swat: "SWAT", infection: "Zombies",
+    shotty_snipers: "Shotty Snipers", fiesta: "Fiesta", oddball: "Oddball",
+    koth: "King of the Hill", rockets: "Rockets", swords: "Swords",
+    team_brs: "Team BRs", assault: "Assault",
+  };
+
+  useEffect(() => {
+    // Aggregate all game type votes across all players
+    supabase.from("halo_gametype_votes").select("gametype, wins").then(({ data }) => {
+      if (data) {
+        const totals: Record<string, number> = {};
+        data.forEach((v: { gametype: string; wins: number }) => {
+          totals[v.gametype] = (totals[v.gametype] || 0) + v.wins;
+        });
+        setGametypeScores(totals);
+      }
+    });
+  }, []);
+
+  const rankedGametypes = Object.entries(gametypeScores)
+    .sort(([, a], [, b]) => b - a);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 justify-center">
+        <button onClick={() => setResultsTab("maps")}
+          className={`px-4 py-1.5 border text-xs ${resultsTab === "maps" ? "border-green-400 text-green-300" : "border-green-900/30 text-green-800"}`}>
+          MAP RANKINGS
+        </button>
+        <button onClick={() => setResultsTab("gametypes")}
+          className={`px-4 py-1.5 border text-xs ${resultsTab === "gametypes" ? "border-amber-400 text-amber-300" : "border-green-900/30 text-green-800"}`}>
+          GAME TYPE RANKINGS
+        </button>
+      </div>
+
+      {resultsTab === "maps" && (
         <div className="space-y-1">
-          {results.map((map, i) => {
+          {maps.map((map, i) => {
             const score = voting.tally[map.id] || 0;
             const voterCount = voting.allVotes.filter(v => v.map_id === map.id).length;
             if (score === 0 && voterCount === 0) return null;
@@ -2013,8 +2060,24 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
               </div>
             );
           })}
-          {results.filter(m => (voting.tally[m.id] || 0) > 0).length === 0 && (
-            <p className="text-green-800 text-center py-8">No votes yet. Switch to VOTE tab to start.</p>
+          {maps.filter(m => (voting.tally[m.id] || 0) > 0).length === 0 && (
+            <p className="text-green-800 text-center py-8">No map votes yet. Switch to MAPS tab.</p>
+          )}
+        </div>
+      )}
+
+      {resultsTab === "gametypes" && (
+        <div className="space-y-1">
+          {rankedGametypes.length > 0 ? rankedGametypes.map(([gt, score], i) => (
+            <div key={gt} className="kpi-card p-3 rounded flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className={`text-lg font-bold w-6 text-center ${i < 3 ? "text-amber-400" : "text-green-700"}`}>{i + 1}</span>
+                <span className="text-amber-300 text-sm font-bold">{GT_NAMES[gt] || gt}</span>
+              </div>
+              <span className="text-amber-400 font-bold">{score} wins</span>
+            </div>
+          )) : (
+            <p className="text-green-800 text-center py-8">No game type votes yet. Switch to MODES tab.</p>
           )}
         </div>
       )}
