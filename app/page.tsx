@@ -1668,12 +1668,21 @@ function GameTypeVoting({ playerId }: { playerId: string | null }) {
       // Save each game type's win count to DB
       if (playerId) {
         activeTypes.forEach(t => {
-          const wins = newVotes[t.id] || 0;
-          supabase.from("halo_gametype_votes").upsert({
-            player_id: playerId,
-            gametype: t.id,
-            wins,
-          }, { onConflict: "player_id,gametype" }).then(() => {});
+          const roundWins = newVotes[t.id] || 0;
+          // Increment existing wins, don't overwrite
+          supabase.from("halo_gametype_votes")
+            .select("wins")
+            .eq("player_id", playerId)
+            .eq("gametype", t.id)
+            .single()
+            .then(({ data: existing }) => {
+              const totalWins = (existing?.wins || 0) + roundWins;
+              supabase.from("halo_gametype_votes").upsert({
+                player_id: playerId,
+                gametype: t.id,
+                wins: totalWins,
+              }, { onConflict: "player_id,gametype" }).then(() => {});
+            });
         });
       }
     } else {
@@ -2309,17 +2318,34 @@ function CombinedResults({ maps, voting }: { maps: HaloMap[]; voting: ReturnType
 
       {resultsTab === "gametypes" && (
         <div className="space-y-1">
-          {rankedGametypes.length > 0 ? rankedGametypes.map(([gt, score], i) => (
-            <div key={gt} className="kpi-card p-3 rounded flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className={`text-lg font-bold w-6 text-center ${i < 3 ? "text-amber-400" : "text-green-700"}`}>{i + 1}</span>
-                <span className="text-amber-300 text-sm font-bold">{GT_NAMES[gt] || gt}</span>
-              </div>
-              <span className="text-amber-400 font-bold">{score} wins</span>
-            </div>
-          )) : (
-            <p className="text-green-800 text-center py-8">No game type votes yet. Switch to MODES tab.</p>
-          )}
+          {(() => {
+            const totalAllWins = rankedGametypes.reduce((s, [, w]) => s + w, 0);
+            return rankedGametypes.length > 0 ? (
+              <>
+                <div className="text-center text-green-700 text-xs mb-2">{totalAllWins} total votes across all players</div>
+                {rankedGametypes.map(([gt, score], i) => {
+                  const pct = totalAllWins > 0 ? Math.round((score / totalAllWins) * 100) : 0;
+                  return (
+                    <div key={gt} className="kpi-card p-2 rounded flex items-center gap-3">
+                      <span className={`text-lg font-bold w-6 text-center ${i < 3 ? "text-amber-400" : "text-green-700"}`}>{i + 1}</span>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-amber-300 text-sm font-bold">{GT_NAMES[gt] || gt}</span>
+                          <span className="text-amber-400 text-sm font-bold">{pct}%</span>
+                        </div>
+                        <div className="w-full h-1 bg-green-900/30 rounded mt-1 overflow-hidden">
+                          <div className="h-full bg-amber-500 transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                      <span className="text-green-700 text-xs shrink-0">{score} wins</span>
+                    </div>
+                  );
+                })}
+              </>
+            ) : (
+              <p className="text-green-800 text-center py-8">No game type votes yet. Switch to MODES tab.</p>
+            );
+          })()}
         </div>
       )}
     </div>
