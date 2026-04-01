@@ -1609,87 +1609,150 @@ function GameTypeVoting({ playerId }: { playerId: string | null }) {
     { id: "assault", name: "ASSAULT", desc: "Plant a bomb at enemy base. Reverse CTF.", note: "Best 4v4-8v8" },
   ];
 
+  const [phase, setPhase] = useState<"select" | "quiz" | "results">("select");
+  const [selected, setSelected] = useState<Set<string>>(new Set(TYPES.map(t => t.id))); // all selected by default
   const [matchup, setMatchup] = useState<[typeof TYPES[0], typeof TYPES[0]] | null>(null);
   const [votes, setVotes] = useState<Record<string, number>>({});
   const [count, setCount] = useState(0);
-  const ROUNDS = 10;
 
-  useEffect(() => {
-    if (!matchup) pickMatchup();
-  }, []);
+  const activeTypes = TYPES.filter(t => selected.has(t.id));
+  const ROUNDS = Math.min(15, Math.max(5, Math.floor(activeTypes.length * 1.5)));
+
+  const toggleType = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   function pickMatchup() {
-    const shuffled = [...TYPES].sort(() => Math.random() - 0.5);
+    if (activeTypes.length < 2) return;
+    const shuffled = [...activeTypes].sort(() => Math.random() - 0.5);
     setMatchup([shuffled[0], shuffled[1]]);
   }
+
+  const startQuiz = () => {
+    if (activeTypes.length < 2) return;
+    setCount(0);
+    setVotes({});
+    setPhase("quiz");
+    pickMatchup();
+  };
 
   const pick = (winnerId: string) => {
     setVotes(prev => ({ ...prev, [winnerId]: (prev[winnerId] || 0) + 1 }));
     setCount(c => c + 1);
     if (count + 1 >= ROUNDS) {
-      setMatchup(null);
+      setPhase("results");
+      // Save to DB
+      if (playerId) {
+        const ranked = [...activeTypes].sort((a, b) => (votes[b.id] || 0) + (b.id === winnerId ? 1 : 0) - ((votes[a.id] || 0) + (a.id === winnerId ? 1 : 0)));
+        ranked.forEach((t, i) => {
+          supabase.from("halo_map_votes").upsert({
+            player_id: playerId,
+            map_id: t.id,
+            draft_id: "gametype-vote",
+            rank: i + 1,
+          }, { onConflict: "player_id,map_id,draft_id" }).then(() => {});
+        });
+      }
     } else {
       pickMatchup();
     }
   };
 
-  const ranked = [...TYPES].sort((a, b) => (votes[b.id] || 0) - (votes[a.id] || 0));
+  const ranked = [...activeTypes].sort((a, b) => (votes[b.id] || 0) - (votes[a.id] || 0));
 
-  if (!matchup || count >= ROUNDS) {
+  // SELECT PHASE: pick which game types to include
+  if (phase === "select") {
     return (
       <div className="space-y-4">
-        <div className="kpi-card p-6 rounded text-center">
-          <div className="text-xl hud-glow text-amber-300 mb-2">GAME TYPE RANKINGS</div>
-          <p className="text-green-700 text-sm mb-4">{count} matchups voted</p>
-          <div className="flex gap-3 justify-center">
-            <button onClick={() => { setCount(0); pickMatchup(); }}
-              className="px-4 py-2 border border-amber-500 text-amber-400 text-xs tracking-widest">VOTE MORE</button>
-          </div>
+        <p className="text-amber-400 text-sm text-center">Select which game types to rank, then start the quiz.</p>
+
+        <div className="flex gap-2 justify-center">
+          <button onClick={() => setSelected(new Set(TYPES.map(t => t.id)))}
+            className="text-[10px] px-3 py-1 border border-green-700 text-green-500 rounded">SELECT ALL</button>
+          <button onClick={() => setSelected(new Set())}
+            className="text-[10px] px-3 py-1 border border-red-900 text-red-500 rounded">CLEAR ALL</button>
         </div>
-        <div className="space-y-1">
-          {ranked.filter(t => (votes[t.id] || 0) > 0).map((t, i) => (
-            <div key={t.id} className="kpi-card p-3 rounded flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className={`text-lg font-bold w-6 text-center ${i < 3 ? "text-amber-400" : "text-green-700"}`}>{i + 1}</span>
-                <div>
-                  <span className="text-green-300 text-sm font-bold">{t.name}</span>
-                  <p className="text-green-700 text-[10px]">{t.desc}</p>
-                </div>
-              </div>
-              <span className="text-green-400 font-bold">{votes[t.id] || 0}</span>
-            </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          {TYPES.map(t => (
+            <button key={t.id} onClick={() => toggleType(t.id)}
+              className={`p-3 border rounded text-left transition-all ${selected.has(t.id) ? "border-amber-400 bg-amber-400/10" : "border-green-900/20 opacity-50"}`}>
+              <h4 className={`text-sm font-bold ${selected.has(t.id) ? "text-amber-300" : "text-green-800"}`}>{t.name}</h4>
+              <p className="text-green-700 text-[10px] leading-relaxed">{t.desc}</p>
+              <span className="text-[9px] text-green-800">{t.note}</span>
+            </button>
           ))}
         </div>
+
+        <button onClick={startQuiz} disabled={activeTypes.length < 2}
+          className="w-full py-3 border-2 border-amber-500 text-amber-400 text-sm tracking-widest rounded hover:bg-amber-500/10 disabled:opacity-30">
+          START QUIZ ({activeTypes.length} TYPES, {ROUNDS} MATCHUPS)
+        </button>
       </div>
     );
   }
 
+  // QUIZ PHASE
+  if (phase === "quiz" && matchup) {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-1 bg-green-900/30 rounded overflow-hidden">
+            <div className="h-full bg-amber-400 transition-all" style={{ width: `${(count / ROUNDS) * 100}%` }} />
+          </div>
+          <span className="text-green-700 text-xs">{count}/{ROUNDS}</span>
+        </div>
+
+        <p className="text-center text-amber-400 text-sm">Which would you rather play?</p>
+
+        <div className="grid grid-cols-2 gap-3">
+          {matchup.map(t => (
+            <button key={t.id} onClick={() => pick(t.id)}
+              className="kpi-card p-4 rounded text-left border border-green-900/30 hover:border-amber-400 transition-all">
+              <h3 className="text-lg font-bold text-amber-300 mb-1">{t.name}</h3>
+              <p className="text-green-600 text-xs leading-relaxed mb-2">{t.desc}</p>
+              <span className="text-[10px] px-2 py-0.5 border border-green-900/30 text-green-700 rounded">{t.note}</span>
+              <p className="text-center text-amber-500 text-xs mt-3 font-bold tracking-widest">PICK</p>
+            </button>
+          ))}
+        </div>
+
+        <button onClick={pickMatchup} className="w-full py-2 border border-green-900/30 text-green-800 text-xs tracking-widest hover:text-green-500">
+          SKIP BOTH
+        </button>
+      </div>
+    );
+  }
+
+  // RESULTS PHASE
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <div className="flex-1 h-1 bg-green-900/30 rounded overflow-hidden">
-          <div className="h-full bg-amber-400 transition-all" style={{ width: `${(count / ROUNDS) * 100}%` }} />
+      <div className="kpi-card p-6 rounded text-center">
+        <div className="text-xl hud-glow text-amber-300 mb-2">YOUR GAME TYPE RANKINGS</div>
+        <p className="text-green-700 text-sm mb-4">{count} matchups, results saved.</p>
+        <div className="flex gap-3 justify-center">
+          <button onClick={() => setPhase("select")}
+            className="px-4 py-2 border border-amber-500 text-amber-400 text-xs tracking-widest">NEW QUIZ</button>
         </div>
-        <span className="text-green-700 text-xs">{count}/{ROUNDS}</span>
       </div>
-
-      <p className="text-center text-amber-400 text-sm">Which game type do you want to play more?</p>
-
-      <div className="grid grid-cols-2 gap-3">
-        {matchup.map(t => (
-          <button key={t.id} onClick={() => pick(t.id)}
-            className="kpi-card p-4 rounded text-left border border-green-900/30 hover:border-amber-400 transition-all">
-            <h3 className="text-lg font-bold text-amber-300 mb-1">{t.name}</h3>
-            <p className="text-green-600 text-xs leading-relaxed mb-2">{t.desc}</p>
-            <span className="text-[10px] px-2 py-0.5 border border-green-900/30 text-green-700 rounded">{t.note}</span>
-            <p className="text-center text-amber-500 text-xs mt-3 font-bold tracking-widest">PICK</p>
-          </button>
+      <div className="space-y-1">
+        {ranked.map((t, i) => (
+          <div key={t.id} className="kpi-card p-3 rounded flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className={`text-lg font-bold w-6 text-center ${i < 3 ? "text-amber-400" : "text-green-700"}`}>{i + 1}</span>
+              <div>
+                <span className="text-green-300 text-sm font-bold">{t.name}</span>
+                <p className="text-green-700 text-[10px]">{t.desc}</p>
+              </div>
+            </div>
+            <span className="text-green-400 font-bold">{votes[t.id] || 0} wins</span>
+          </div>
         ))}
       </div>
-
-      <button onClick={pickMatchup} className="w-full py-2 border border-green-900/30 text-green-800 text-xs tracking-widest hover:text-green-500">
-        SKIP BOTH
-      </button>
     </div>
   );
 }
