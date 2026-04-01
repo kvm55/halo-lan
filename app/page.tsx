@@ -1948,8 +1948,8 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
       </div>
       <div className="flex gap-1 overflow-x-auto pb-1">
         <button onClick={() => { setSelectedModes(new Set()); setMatchup(null); setMatchupCount(0); }}
-          className={`px-2 py-1 border text-[10px] whitespace-nowrap rounded ${allModesSelected ? "border-amber-400 text-amber-300 bg-amber-400/10" : "border-green-900/30 text-green-800"}`}>
-          ALL
+          className={`px-2 py-1.5 border-2 text-[10px] whitespace-nowrap rounded font-bold ${allModesSelected ? "border-amber-400 text-amber-300 bg-amber-400/15" : "border-green-900/20 text-green-800"}`}>
+          ALL TYPES
         </button>
         {["Slayer", "CTF", "SWAT", "Infection", "Shotty Snipers", "Fiesta", "Oddball", "King of the Hill", "Rockets"].map(gt => {
           const key = gt.toLowerCase();
@@ -1963,12 +1963,22 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
               });
               setMatchup(null); setMatchupCount(0);
             }}
-              className={`px-2 py-1 border text-[10px] whitespace-nowrap rounded ${active ? "border-amber-400 text-amber-300 bg-amber-400/10" : "border-green-900/30 text-green-800"}`}>
+              className={`px-2.5 py-1.5 border-2 text-[10px] whitespace-nowrap rounded font-bold transition-all ${active ? "border-amber-400 text-amber-200 bg-amber-500/20 shadow-[0_0_8px_rgba(245,158,11,0.3)]" : "border-green-900/20 text-green-800 hover:border-green-700"}`}>
               {gt.toUpperCase()}
             </button>
           );
         })}
       </div>
+
+      {/* Active filter summary */}
+      {!allModesSelected && selectedModes.size > 0 && (
+        <div className="kpi-card p-2 rounded border-amber-500/20 text-center">
+          <span className="text-amber-400 text-xs font-bold tracking-wider">
+            FILTERING: {[...selectedModes].map(m => m.toUpperCase()).join(" + ")}
+          </span>
+          <span className="text-green-700 text-xs ml-2">({filtered.length} maps)</span>
+        </div>
+      )}
 
       {mode === "vote" && (
         <>
