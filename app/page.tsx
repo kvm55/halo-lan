@@ -1780,14 +1780,15 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
   const [mode, setMode] = useState<"vote" | "gametypes" | "results">("vote");
   const [gameFilter, setGameFilter] = useState("all");
   const [sizeFilter, setSizeFilter] = useState<string>("all");
-  const [modeFilter, setModeFilter] = useState<string>("all");
+  const [selectedModes, setSelectedModes] = useState<Set<string>>(new Set());
   const [localVoted, setLocalVoted] = useState<Set<string>>(new Set());
+  const allModesSelected = selectedModes.size === 0; // empty = all
 
   // Filter maps
   const filtered = maps.filter(m => {
     if (gameFilter !== "all" && m.game !== gameFilter) return false;
     if (sizeFilter !== "all" && m.map_size !== sizeFilter) return false;
-    if (modeFilter !== "all" && m.game_mode.toLowerCase() !== modeFilter) return false;
+    if (!allModesSelected && !selectedModes.has(m.game_mode.toLowerCase())) return false;
     return true;
   });
 
@@ -1946,10 +1947,22 @@ function MapVotingSwipe({ maps, voting, playerId }: { maps: HaloMap[]; voting: R
         ))}
       </div>
       <div className="flex gap-1 overflow-x-auto pb-1">
+        <button onClick={() => { setSelectedModes(new Set()); setMatchup(null); setMatchupCount(0); }}
+          className={`px-2 py-1 border text-[10px] whitespace-nowrap rounded ${allModesSelected ? "border-amber-400 text-amber-300 bg-amber-400/10" : "border-green-900/30 text-green-800"}`}>
+          ALL
+        </button>
         {["Slayer", "CTF", "SWAT", "Infection", "Shotty Snipers", "Fiesta", "Oddball", "King of the Hill", "Rockets"].map(gt => {
-          const active = modeFilter === gt.toLowerCase();
+          const key = gt.toLowerCase();
+          const active = selectedModes.has(key);
           return (
-            <button key={gt} onClick={() => { setModeFilter(active ? "all" : gt.toLowerCase()); setMatchup(null); setMatchupCount(0); }}
+            <button key={gt} onClick={() => {
+              setSelectedModes(prev => {
+                const next = new Set(prev);
+                if (next.has(key)) next.delete(key); else next.add(key);
+                return next;
+              });
+              setMatchup(null); setMatchupCount(0);
+            }}
               className={`px-2 py-1 border text-[10px] whitespace-nowrap rounded ${active ? "border-amber-400 text-amber-300 bg-amber-400/10" : "border-green-900/30 text-green-800"}`}>
               {gt.toUpperCase()}
             </button>
