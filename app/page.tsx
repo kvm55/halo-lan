@@ -36,10 +36,9 @@ export default function Home() {
   useEffect(() => {
     if (session.loading) return;
     if (!session.player) {
-      // Don't override intro screen
+      // Skip intro for returning visitors, go straight to login
       if (screen !== "intro") setScreen("login");
-    } else if (needsProfile || !session.player.checked_in) {
-      // Always force profile on first login of the session
+    } else if (needsProfile && !session.player.profile_confirmed) {
       setScreen("profile");
     } else {
       setScreen("lobby");
@@ -169,8 +168,10 @@ export default function Home() {
     if (!result.success) {
       setLoginError(result.error || "Authentication failed");
     } else {
-      // Always show profile wizard on login so they confirm name + gamertag
-      setNeedsProfile(true);
+      // Only show wizard if they haven't completed it before
+      if (!result.player?.profile_confirmed) {
+        setNeedsProfile(true);
+      }
     }
   }
 }
